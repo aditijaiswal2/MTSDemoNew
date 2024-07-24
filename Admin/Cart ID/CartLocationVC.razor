@@ -1,0 +1,127 @@
+﻿@using ITS.Client.Dialog.Cart
+@using ITS.Client.Dialog.QRCode;
+@using ITS.Client.Utitlity
+@using ITS.Shared.DTOs
+@using ITS.Shared.Models
+@using MudBlazor
+@using System.Collections.Generic
+@using System.Net.Http.Json
+@using System.Threading.Tasks
+
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject HttpClient HttpClient
+@inject IDialogCompletionService CompletionService
+
+<MudContainer Fixed="true">
+    <MudGrid Class="d-flex">
+        <MudItem md="12" sm="12" xs="12">
+            <MudButton Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Primary" OnClick="@AddCartLocation">ADD</MudButton>
+        </MudItem>
+        <MudItem md="12" sm="12" xs="12">
+            <div style="max-height: 500px; max-width:100%;">
+                <MudTable Items="@cartLoc" Class="table table-bordered table-striped mt-2">
+                    <HeaderContent>
+                        <MudTh>Cart Location</MudTh>
+                        <MudTh Style="text-align:center">Description</MudTh>
+                        <MudTh Style="text-align:center">Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate Context="cartloc">
+                        <MudTd>@cartloc.Location</MudTd>
+                        <MudTd Style="text-align:center">@cartloc.Description</MudTd>
+                        <MudTd Style="text-align:center">
+                            <!-- Example action buttons -->
+                            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Edit" Color="Color.Primary" OnClick="@(() => EditCartLocation(cartloc))">Edit</MudButton>
+                            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => DeleteCartLocation(cartloc))">Delete</MudButton>
+                        </MudTd>
+                    </RowTemplate>
+                    <PagerContent>
+                        <MudTablePager PageSizeOptions="new int[] { 5, 10, 50, 100, int.MaxValue }" />
+                    </PagerContent>
+                </MudTable>
+            </div>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+@code {
+    private IEnumerable<CartLocation> cartLoc = new List<CartLocation>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCart();
+    }
+
+    private async Task LoadCart()
+    {
+        Snackbar.Clear();
+        Snackbar.Configuration.PositionClass = Defaults.Classes.Position.TopCenter;
+
+        try
+        {
+            var response = await HttpClient.GetAsync("https://localhost:7006/api/CartLocation/getloc");
+            if (response.IsSuccessStatusCode)
+            {
+                cartLoc = await response.Content.ReadFromJsonAsync<IEnumerable<CartLocation>>();
+            }
+            else
+            {
+                Snackbar.Add($"Failed to load cart data. Status code: {response.StatusCode}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error Occurred: {ex.Message}", Severity.Warning);
+        }
+    }
+
+    async Task AddCartLocation()
+    {
+        var dialog = DialogService.Show<CartLocationAdd>("ADD Cart Location", DialogSettings.DialogOptionsAddEditDelete);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            await LoadCart(); // Reload cart data after adding
+        }
+    }
+
+    private async Task EditCartLocation(CartLocation cartloc)
+    {
+        var parameters = new DialogParameters<CartLocationEdit> { { l => l.cartloc, cartloc } };
+        var dialog = await DialogService.ShowAsync<CartLocationEdit>("EDIT CART LOCATION", parameters, DialogSettings.DialogOptionsAddEditDelete);
+
+        CompletionService.CompletionChanged += async (sender, args) =>
+        {
+            await UpdateCartDataAsync();
+        };
+    }
+
+    private async Task DeleteCartLocation(CartLocation cartloc)
+    {
+        var parameters = new DialogParameters<CartDeleteLocation> { { x => x.loc, cartloc } };
+        var dialog = await DialogService.ShowAsync<CartDeleteLocation>("DELETE CART LOCATION", parameters, DialogSettings.DialogOptionsAddEditDelete);
+
+        CompletionService.CompletionChanged += async (sender, args) =>
+        {
+            await UpdateCartDataAsync();
+        };
+    }
+    private async Task UpdateCartDataAsync()
+    {
+        if (CompletionService.IsCompleted)
+        {
+            var cartResponse = await HttpClient.GetAsync("https://localhost:7006/api/cartlocation/getloc");
+            // var locationsResponse = await HttpClient.GetAsync(ApiConstants.GetLocations);
+            if (cartResponse.IsSuccessStatusCode)
+            {
+                var cartLocResult = await cartResponse.Content.ReadFromJsonAsync<IEnumerable<CartLocation>>();
+                if (cartLocResult != null)
+                {
+                    cartLoc = cartLocResult.ToList().OrderByDescending(c => c.Id);
+                    StateHasChanged();
+                }
+            }
+        }
+    }
+}

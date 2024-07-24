@@ -1,0 +1,187 @@
+﻿@page "/wlvc"
+
+@using ITS.Client.Dialog
+@using ITS.Client.Dialog.Location
+@using ITS.Client.Dialog.QRCode;
+@using ITS.Client.Dialog.WIPLocation
+@using ITS.Client.Utitlity;
+@using ITS.Shared.DTOs
+@using ITS.Shared.Models
+@using MudBlazor
+@using System.Collections.Generic
+@using System.Text
+@using QRCoder;
+
+@inject IDialogService DialogService
+@inject IJSRuntime jsRuntime
+@inject ISnackbar Snackbar
+@inject HttpClient HttpClient
+@inject IDialogCompletionService CompletionService
+
+<MudContainer Style="height: calc(100vh);">
+    <MudGrid Class="d-flex">
+        <MudItem md="12" sm="12" xs="12">
+             <div style="margin-top:17px;">
+            <MudButton Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Primary" OnClick="@AddLocation">ADD</MudButton>
+            </div>
+        </MudItem>
+        <MudItem md="12" sm="12" xs="12">
+            <div style="max-height: 500px; max-width:100%;">
+                <MudTable Items="@wIPLocations" Class="table table-bordered table-striped mt-2">
+                    <HeaderContent>
+                        <MudTh>WIP Location</MudTh>
+                        <MudTh Style="text-align:center">Description</MudTh>
+                        <MudTh Style="text-align:center">Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate Context="location">
+                        <MudTd>@location.Location</MudTd>
+                        <MudTd Style="text-align:center">@location.Description</MudTd>
+                        <MudTd Style="text-align:center">
+                            <MudButton StartIcon="@Icons.Material.Filled.Edit" Color="Color.Primary" OnClick="@(() => EditLocation(location))" />
+                            <MudButton StartIcon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => DeleteLocation(location))" />
+                            <MudButton StartIcon="@Icons.Material.Filled.QrCode" Color="Color.Tertiary" OnClick="@(() => GenerateQR(location))" />
+                        </MudTd>
+                    </RowTemplate>
+                    <PagerContent>
+                        <MudTablePager PageSizeOptions="new int[] { 5, 10, 50, 100, int.MaxValue }" />
+                    </PagerContent>
+                </MudTable>
+            </div>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+@code {
+    private IEnumerable<WIPLocation> wIPLocations = new List<WIPLocation>();
+    private Stream pdfStream;
+    private string pdfDataUrl;
+    private int currentPage = 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadWIPLocations();
+    }
+
+    private async Task LoadWIPLocations()
+    {
+        Snackbar.Clear();
+        Snackbar.Configuration.PositionClass = Defaults.Classes.Position.TopCenter;
+
+        try
+        {
+            var locationsResponse = await HttpClient.GetAsync(ApiConstants.GetWIPLocations);
+            if (locationsResponse.IsSuccessStatusCode)
+            {
+                var locationResult = await locationsResponse.Content.ReadFromJsonAsync<IEnumerable<WIPLocation>>();
+                if (locationResult != null)
+                {
+                    wIPLocations = locationResult.ToList().OrderByDescending(l => l.Id);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error Occured {ex.Message}", Severity.Warning);
+        }
+    }
+
+    async Task AddLocation()
+    {
+        DialogService.Show<AddWIPLocationDialog>("ADD WIP LOCATION", DialogSettings.DialogOptionsAddEditDelete);
+
+        CompletionService.CompletionChanged += async (sender, args) =>
+        {
+            await UpdateLocationDataAsync();
+        };
+    }
+
+    async Task EditLocation(WIPLocation location)
+    {
+        var parameters = new DialogParameters<EditWIPLocatioDialog> { { x => x.location, location } };
+        var dialog = await DialogService.ShowAsync<EditWIPLocatioDialog>("EDIT WIP LOCATION", parameters, DialogSettings.DialogOptionsAddEditDelete);
+
+        CompletionService.CompletionChanged += async (sender, args) =>
+        {
+            await UpdateLocationDataAsync();
+        };
+    }
+
+    async Task DeleteLocation(WIPLocation location)
+    {
+        var parameters = new DialogParameters<DeleteWIPLocationDialog> { { x => x.location, location } };
+        var dialog = await DialogService.ShowAsync<DeleteWIPLocationDialog>("DELETE WIP LOCATION", parameters, DialogSettings.DialogOptionsAddEditDelete);
+
+        CompletionService.CompletionChanged += async (sender, args) =>
+        {
+            await UpdateLocationDataAsync();
+        };
+    }
+
+    public async Task GenerateQR(WIPLocation location)
+    {
+        Snackbar.Clear();
+        Snackbar.Configuration.PositionClass = Defaults.Classes.Position.TopCenter;
+
+        try
+        {
+            string locationData = $"Location: {location.Location}, Description: {location.Description}, Date: {DateTime.Now}";
+
+            var jsonPart = JsonConvert.SerializeObject(location);
+            var content = new StringContent(jsonPart, Encoding.UTF8, "application/json");
+            // var response = await HttpClient.PostAsync("https://localhost:7006/api/QRCode/locQR", content);
+            var response = await HttpClient.PostAsync(ApiConstants.GenerateWIPLocQr, content);
+
+            byte[] qrCodeBytes = null;
+
+            if (response.IsSuccessStatusCode)
+            {
+                using (var pdfStream = await response.Content.ReadAsStreamAsync())
+                {
+                    using (var memoryStream = new MemoryStream())
+                    {
+                        await pdfStream.CopyToAsync(memoryStream);
+                        qrCodeBytes = memoryStream.ToArray();
+                    }
+                }
+
+                QrDTO locationQr = new QrDTO()
+                    {
+                        PartOrLoc = location.Location,
+                        Description = location.Description,
+                        QRData = qrCodeBytes,
+                    };
+
+                var options = new DialogOptions { FullWidth = false, DisableBackdropClick = true };
+                var parameters = new DialogParameters { ["LocQR"] = locationQr };
+
+                var dialog = await DialogService.ShowAsync<QRCodeDialog>("Show QR", parameters, options);
+            }
+            else
+            {
+                Snackbar.Add($"QR code generation failed with status code: {response.StatusCode}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error generating QR code: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task UpdateLocationDataAsync()
+    {
+        if (CompletionService.IsCompleted)
+        {
+            var locationsResponse = await HttpClient.GetAsync(ApiConstants.GetWIPLocations);
+            if (locationsResponse.IsSuccessStatusCode)
+            {
+                var locationResult = await locationsResponse.Content.ReadFromJsonAsync<IEnumerable<WIPLocation>>();
+                if (locationResult != null)
+                {
+                    wIPLocations = locationResult.ToList().OrderByDescending(l => l.Id);
+                    StateHasChanged();
+                }
+            }
+        }
+    }
+}
+

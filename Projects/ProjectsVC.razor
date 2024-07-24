@@ -1,0 +1,249 @@
+﻿@page "/projects"
+
+
+@using System.Net.Http
+@using System.Net.Http.Json
+@using ITS.Client.Dialog.Images
+@using ITS.Client.Dialog.WIP
+@using ITS.Client.Utitlity
+@using ITS.Shared.DTOs.WIP
+@using ITS.Shared.Models.MyProject
+@using System.Text
+@using System.Net
+@using static ITS.Shared.DTOs.WIP.WIPSearchDTO
+@using static ITS.Client.Pages.LoginVC
+
+@inject Blazored.LocalStorage.ILocalStorageService localStorage
+@inject HttpClient _httpClient
+@inject ISnackbar Snackbar
+@inject IDialogCompletionService CompletionService
+
+<MudContainer Style="height: 100%;width: 100%;overflow-y:hidden;overflow-x:hidden">
+    <MudGrid Class="d-flex Justify-arround">
+        <MudItem md="11" sm="12" xs="12" class="mb-2">
+            <MudItem lg="12" md="12">
+                <MudTextField T="string" MaxLength="250" Immediate="true" Validation="@(new Func<string, IEnumerable<string>>(MaxCharacters))"
+                              Label="Input Project Number" @bind-Value="SearchText"
+                              Variant="Variant.Outlined" @onkeydown="HandleKeyDown"></MudTextField>
+            </MudItem>
+        </MudItem>
+
+        <MudItem Class="pa-2 d-flex justify-end" md="1" sm="12" xs="12">
+            <div style="padding: 20px 20px; margin-right: -29px ">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SearchProjectData">Search</MudButton>
+            </div>
+        </MudItem>
+
+        @if (project != null)
+        {
+            <MudItem md="12" sm="12" xs="12">
+                <MudSelect T="MyProjectJob" Label="Job Number" @bind-Value="selectedJob" Variant="Variant.Outlined">
+                    @foreach (var job in project.Jobs)
+                    {
+                        <MudSelectItem Value="@job">@job.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+        }
+
+        @if (selectedJob != null)
+        {
+            var subjobs = project.Jobs.FirstOrDefault(j => j.Id == selectedJob.Id)?.SubJobs;
+
+            <MudItem md="6" sm="12" xs="12">
+                <MudSelect T="MyProjectBOM" Label="Sub-Job Number/BOM" @bind-Value="selectedBOM" Variant="Variant.Outlined">
+                    @foreach (MyProjectSubJob subJob in subjobs)
+                    {
+                        var boms = subJob.BillOfMaterials;
+                        @foreach (var bom in boms)
+                        {
+                            @if (subJob.Id == bom.SubJobId)
+                            {
+                                <MudSelectItem Value="@bom">@($"{subJob.Equipment.ToString()}/{bom.Name}")</MudSelectItem>
+                            }
+                        }
+                    }
+                </MudSelect>
+            </MudItem>
+
+            @foreach (var subJob in subjobs)
+            {
+                var matchingBOM = subJob.BillOfMaterials.FirstOrDefault(b => b == selectedBOM);
+                if (matchingBOM != null)
+                {
+                    selectedSubJob = subJob;
+                    break;
+                }
+            }
+
+           
+        }
+
+
+       
+        @if (selectedBOM != null)
+        {
+            <MudItem md="6" sm="12" xs="12">
+                <MudSelect T="MyProjectMaterial" Label="Material/Part Number" MultiSelection="true" SelectAll="true" SelectAllText="All" @bind-Value="selectedMaterial" Variant="Variant.Outlined" >
+                    @foreach (var material in project.Jobs.SelectMany(j => j.SubJobs).SelectMany(sj => sj.BillOfMaterials).Where(b => b.Id == selectedBOM.Id).FirstOrDefault()?.Materials)
+                    {
+                        <MudSelectItem Value="@material">@material.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+
+
+            @* if (selectedMaterial != null)
+            {
+                <MudItem md="12" sm="12" xs="12" class="center">
+                    <MudButton Variant="Variant.Filled" Size="Size.Small" Color="Color.Primary" OnClick="OpenViewPartDetailsDialog">View Part Details</MudButton>
+                </MudItem>
+            }
+ *@
+
+            <MudItem Class="d-flex justify-end mt-4" md="12" sm="12" xs="12">
+                <MudButton Class="mr-2" Variant="Variant.Filled" Size="Size.Small" Color="Color.Primary" OnClick="Create">Create</MudButton>
+                <MudButton Variant="Variant.Filled" Size="Size.Small" Color="Color.Error" OnClick="ClearAll">Cancel</MudButton>
+            </MudItem>
+        }
+       
+    </MudGrid>
+</MudContainer>
+
+<style>
+    .center {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+</style>
+
+
+@code {
+
+
+    public string? SearchText { get; set; }
+
+    private string? SelectedProjectStatus { get; set; }
+
+    public MyProject? project;
+    public MyProjectJob? selectedJob;
+    public MyProjectSubJob? selectedSubJob;
+    public MyProjectBOM? selectedBOM;
+    public MyProjectMaterial? selectedMaterial;
+
+
+    private List<string> projectStatus = new List<string>();
+
+
+    private bool resetValueOnEmptyText;
+    private bool coerceText;
+    private bool coerceValue;
+
+    private bool IsPrintQrButtonEnabled = false;
+
+    private IEnumerable<string> MaxCharacters(string ch)
+    {
+        if (!string.IsNullOrEmpty(ch) && 250 <= ch?.Length)
+            yield return "Max 250 characters";
+    }
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+
+
+
+    }
+
+    private async Task LoadData()
+    {
+
+
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SearchProjectData();
+        }
+    }
+
+    private async Task SearchProjectData()
+    {
+        if (string.IsNullOrWhiteSpace(SearchText))
+        {
+            Snackbar.Add("Please enter a project number.", Severity.Error);
+            return;
+        }
+
+        //var response = await _httpClient.GetAsync($"{ApiConstants.GetCSIProjects}/{SearchText}");
+        var response = await _httpClient.GetAsync($"https://localhost:7006/api/CSIMyProject/GCSIProj/{SearchText}");
+
+        if (response.IsSuccessStatusCode)
+        {
+            project = await response.Content.ReadFromJsonAsync<MyProject>();
+
+            if (project == null)
+            {
+                Snackbar.Add("No project data found.", Severity.Warning);
+            }
+        }
+        else
+        {
+            if (response.ReasonPhrase == "Not Found")
+            {
+                Snackbar.Add("Unable to locate project data within CSI-Syteline.", Severity.Error);
+            }
+            else
+            {
+                Snackbar.Add($"Failed to load project data: {response.ReasonPhrase}", Severity.Error);
+            }
+        }
+    }
+
+
+
+    // private void OpenViewPartDetailsDialog()
+    // {
+    //     if (selectedMaterial == null)
+    //     {
+    //         Snackbar.Add("Select Part/Materials Number", Severity.Warning);
+    //         return;
+    //     }
+
+    //     var partDetails = new PartDetailsDTO()
+    //         {
+    //             PartNumber = selectedMaterial.Name,
+    //             PartDescription = selectedMaterial.Description,
+    //             Source = selectedMaterial.Source
+    //         };
+
+    //     var options = new DialogOptions { FullWidth = true, DisableBackdropClick = true };
+
+    //     var parameters = new DialogParameters<PartDetailsPage>();
+    //     parameters.Add("Materials", partDetails);
+
+    //     DialogService.Show<PartDetailsPage>("Materials", parameters, DialogSettings.DialogOptionsImage);
+    // }
+
+
+    private async void Create()
+    {
+        
+    }
+    private void ClearAll()
+    {
+        selectedJob = null;
+        selectedSubJob = null;
+        selectedBOM = null;
+        selectedMaterial = null;
+        project = null;       
+        SelectedProjectStatus = null;
+       
+    }
+    
+}
+

@@ -1,0 +1,41 @@
+﻿@page "/wm"
+@using ITS.Client.Pages.Account
+
+@inherits BaseAuthentication
+
+<MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6">
+    <MudTabPanel Text="Search">
+        <div style="height: calc(100vh);">
+        <WIPSearchVC></WIPSearchVC>
+        </div>
+    </MudTabPanel>
+    <MudTabPanel Text="WIP">
+        <div style="height: calc(100vh);">
+        <WIPVC></WIPVC>
+        </div>
+    </MudTabPanel>
+</MudTabs>
+
+@* <MudContainer Class="pa-2" Fixed="true" Style="height: 100%;">
+    <MudTabs Class="flex pa-5" Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6">
+        <MudTabPanel Text="Search">           
+            <div style="height: 100vh; overflow: hidden;">
+                <WIPSearchVC></WIPSearchVC>
+            </div>
+        </MudTabPanel>
+        <MudTabPanel Text="WIP">         
+            <div style="height: 100vh; overflow: hidden;">
+                <WIPVC></WIPVC>
+            </div>
+        </MudTabPanel>
+    </MudTabs>
+</MudContainer>
+ *@
+@code {
+
+}
+
+
+
+
+

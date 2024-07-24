@@ -1,0 +1,73 @@
+﻿@page "/sqvc"
+@using ITS.Client.Pages.Account;
+@using ReactorBlazorQRCodeScanner
+@using Microsoft.JSInterop
+@using MudBlazor
+
+@inject IJSRuntime JS
+
+@inherits BaseAuthentication
+
+<MudContainer Style="height: calc(100vh); overflow:hidden" Class="mt-5">
+    <MudGrid Class="d-flex justify-center">
+        <MudItem md="12" sm="12" xs="12" class="mb-2">
+            <MudText Typo="Typo.h6" Style="font-size: 16px;">QR SCANNER</MudText>
+        </MudItem>
+        <MudItem md="12" sm="12" xs="12"  Class="d-flex justify-center align-center mb-2">
+            <MudButton @onclick="StartScanning" Variant="Variant.Filled" Color="Color.Primary">Scan QR</MudButton>
+        </MudItem>
+        <MudItem md="12" sm="12" xs="12" Class="d-flex justify-center align-center">
+            @if (isScanning)
+            {
+                <div class="d-flex justify-center"  style="width: 350px; height: 350px;" >
+                    <QRCodeScanner LoadingMessage="" />
+                </div>
+            }
+        </MudItem>
+        <MudItem md="12" sm="12" xs="12" Class="d-flex justify-center align-center" Style="margin-top:-20px">
+            @if (!string.IsNullOrEmpty(qrCodeData))
+            {
+                <div>
+                    <MudText Class="d-flex justify-center align-center">Scanned QR Code Data:</MudText>
+                            
+                    <div class="border border-primary p-10 mt-2">
+                        @foreach (var item in qrCodeData.Split(','))
+                        {
+                            <p style="margin: 1.5rem; font-size: 16px;">@item.Trim()</p>
+                        }
+                    </div>
+                </div>
+            }
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+@code {
+
+    private QRCodeScannerJsInterop? _qrCodeScannerJsInterop;
+    private Action<string>? _onQrCodeScanAction;
+    private QRCodeScanner qrCodeScanner;
+
+    private string qrCodeData;
+
+    private bool isScanning;
+
+    private async Task StartScanning()
+    {
+        isScanning = true;
+        qrCodeData = null;
+
+        _onQrCodeScanAction = (code) => OnQrCodeScan(code);
+
+        _qrCodeScannerJsInterop = new QRCodeScannerJsInterop(JS);
+        await _qrCodeScannerJsInterop.Init(_onQrCodeScanAction);
+    }
+
+    private void OnQrCodeScan(string code)
+    {
+        qrCodeData = code;
+        isScanning = false;
+        _qrCodeScannerJsInterop.StopRecording(); // Stop scanning
+        StateHasChanged();
+    }
+}

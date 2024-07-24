@@ -1,0 +1,701 @@
+﻿@page "/wvc"
+
+@using System.Net.Http
+@using System.Net.Http.Json
+@using ITS.Client.Dialog.Images
+@using ITS.Client.Dialog.WIP
+@using ITS.Client.Utitlity
+@using ITS.Shared.DTOs.WIP
+@using ITS.Shared.Models.Project
+@using System.Text
+@using System.Net
+@using static ITS.Shared.DTOs.WIP.WIPSearchDTO
+@using static ITS.Client.Pages.LoginVC
+
+@inject Blazored.LocalStorage.ILocalStorageService localStorage
+@inject HttpClient _httpClient
+@inject ISnackbar Snackbar
+@inject IDialogCompletionService CompletionService
+
+<MudContainer Style="height: 100%;width: 100%;overflow-y:hidden;overflow-x:hidden">
+    <MudGrid Class="d-flex Justify-arround">
+        <MudItem md="11" sm="12" xs="12" class="mb-2">
+            <MudItem lg="12" md="12">
+                <MudTextField T="string" MaxLength="250" Immediate="true" Validation="@(new Func<string, IEnumerable<string>>(MaxCharacters))"
+                              Label="Input Project Number" @bind-Value="SearchText"
+                              Variant="Variant.Outlined" @onkeydown="HandleKeyDown"></MudTextField>
+            </MudItem>
+        </MudItem>
+
+        <MudItem Class="pa-2 d-flex justify-end" md="1" sm="12" xs="12">
+            <div style="padding: 20px 20px; margin-right: -29px ">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SearchProjectData">Search</MudButton>
+            </div>
+        </MudItem>
+
+        @if (project != null)
+        {
+            <MudItem md="6" sm="12" xs="12">
+                <MudSelect T="Job" Label="Job Number" @bind-Value="selectedJob" Variant="Variant.Outlined">
+                    @foreach (var job in project.Jobs)
+                    {
+                        <MudSelectItem Value="@job">@job.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+        }
+
+        @if (selectedJob != null)
+        {
+            var subjobs = project.Jobs.FirstOrDefault(j => j.Id == selectedJob.Id)?.SubJobs;
+
+            <MudItem md="6" sm="12" xs="12">
+                <MudSelect T="BOM" Label="Sub-Job Number/BOM" @bind-Value="selectedBOM" Variant="Variant.Outlined">
+                    @foreach (SubJob subJob in subjobs)
+                    {
+                        var boms = subJob.BillOfMaterials;
+                        @foreach (var bom in boms)
+                        {
+                            @if (subJob.Id == bom.SubJobId)
+                            {
+                                <MudSelectItem Value="@bom">@($"{subJob.Equipment.ToString()}/{bom.Name}")</MudSelectItem>
+                            }
+                        }
+                    }
+                </MudSelect>
+            </MudItem>
+
+            @foreach (var subJob in subjobs)
+            {
+                var matchingBOM = subJob.BillOfMaterials.FirstOrDefault(b => b == selectedBOM);
+                if (matchingBOM != null)
+                {
+                    selectedSubJob = subJob;
+                    break;
+                }
+            }
+
+            GetImagesData();
+        }
+
+
+        @* @if (selectedJob != null)
+        {
+        <MudItem md="6" sm="12" xs="12">
+        <MudSelect T="BOM" Label="BOM" @bind-Value="selectedBOM" Variant="Variant.Outlined">
+        @foreach (var bom in project.Jobs.SelectMany(j => j.SubJobs).Where(sj => sj.Id == selectedSubJob.Id).FirstOrDefault()?.BillOfMaterials)
+        {
+        <MudSelectItem Value="@bom">@bom.SubJob + @bom.Name</MudSelectItem>
+        }
+        </MudSelect>
+        </MudItem>
+        } *@
+
+        @if (selectedBOM != null)
+        {
+            <MudItem md="12" sm="12" xs="12">
+                <MudSelect T="Material" Label="Material/Part Number" @bind-Value="selectedMaterial" Variant="Variant.Outlined">
+                    @foreach (var material in project.Jobs.SelectMany(j => j.SubJobs).SelectMany(sj => sj.BillOfMaterials).Where(b => b.Id == selectedBOM.Id).FirstOrDefault()?.Materials)
+                    {
+                        <MudSelectItem Value="@material">@material.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+
+            if (selectedMaterial != null)
+            {
+                <MudItem md="12" sm="12" xs="12" class="center">
+                    <MudButton Variant="Variant.Filled" Size="Size.Small" Color="Color.Primary" OnClick="OpenViewPartDetailsDialog">View Part Details</MudButton>
+                </MudItem>
+            }
+
+            @if (BOMimagesData != null && BOMimagesData.WIPImages != null && BOMimagesData.WIPImages.Any())
+            {
+                <MudItem md="12" sm="12" xs="12">
+                    <MudContainer>
+                        <MudGrid Class="d-flex mt-2" Spacing="2" Justify="Justify.Center">
+                           
+                                @foreach (var image in BOMimagesData.WIPImages)
+                                {
+                                    <MudCard Class="pa-2" Outlined="true" Style="width: 100px;">
+                                        <MudCardMedia @onclick="OpenDialog" Image="@($"data:image/jpeg;base64,{Convert.ToBase64String(image.Data)}")" Height="60" />
+                                    </MudCard>
+                                }
+                            
+
+                        </MudGrid>
+                    </MudContainer>
+                </MudItem>
+
+            }
+            else
+            {
+                @if (bomImagesAll != null || bomImagesAll.Count() > 0)
+                {
+                    var filteredBomImages = bomImagesAll.Where(data =>
+                    data.Project == SearchText &&
+                    data.Job == selectedJob.Name &&
+                    data.SubJob.ToString() == selectedSubJob.Equipment &&
+                    data.BOM == selectedBOM.Name);
+
+                    var bomImgRes = filteredBomImages.Select(x => x.Images).FirstOrDefault();
+
+                    if (bomImgRes != null)
+                    {
+                        <MudItem md="12" sm="12" xs="12">
+                            <MudContainer>
+                                <MudGrid Class="d-flex mt-2" Spacing="2" Justify="Justify.Center">
+                                    @foreach (var image in bomImgRes)
+                                    {
+                                        <MudCard Class="pa-2" Outlined="true" Style="width: 100px;">
+                                            <MudCardMedia @onclick="OpenDialog" Image="@($"data:image/jpeg;base64,{Convert.ToBase64String(image.Data)}")" Height="60" />
+                                        </MudCard>
+                                    }
+                                </MudGrid>
+                            </MudContainer>
+                        </MudItem>
+
+                    }
+                    else
+                    {
+                        <MudItem md="12" sm="12" xs="12" Class="d-flex justify-center">
+                            <div style="border: 2px dotted gray; padding: 10px; text-align: center; width: 250px; height: 75px">
+                                <p>No images available</p>
+                                <MudItem>
+                                    <MudButton StartIcon="@Icons.Material.Filled.Add" Color="Color.Primary" OnClick="@(async () => await AddBOMImagesAsync(new BOMImgDTO {
+                              ProjectNumber = SearchText,
+                              JobNo = selectedJob?.Name,
+                              SubJob = selectedSubJob.Equipment.ToString(),
+                              BOM = selectedBOM.Name }))">
+                                    </MudButton>
+                                </MudItem>
+                            </div>
+                        </MudItem>
+                    }
+                }
+                else
+                {
+                    <MudItem md="12" sm="12" xs="12" Class="d-flex justify-center">
+                        <div style="border: 2px dotted gray; padding: 10px; text-align: center; width: 250px; height: 75px">
+                            <p>No images available</p>
+                            <MudItem>
+                                <MudButton StartIcon="@Icons.Material.Filled.Add" Color="Color.Primary" OnClick="@(async () => await AddBOMImagesAsync(new BOMImgDTO {
+                              ProjectNumber = SearchText,
+                              JobNo = selectedJob?.Name,
+                              SubJob = selectedSubJob.Equipment.ToString(),
+                              BOM = selectedBOM.Name }))">
+                                </MudButton>
+                            </MudItem>
+                        </div>
+                    </MudItem>
+                }
+            }
+
+
+            @* <MudItem md="12" sm="12" xs="12">
+                <MudContainer>
+                    <MudGrid Class="d-flex mt-2" Spacing="2" Justify="Justify.Center">
+                        @if (imageData != null && imageData.WIPImages != null && imageData.WIPImages.Any())
+                        {
+                            @foreach (var imgData in imageData.WIPImages)
+                            {
+                                <MudCard Class="pa-2" Outlined="true" Style="width: 100px;">
+                                    <MudCardMedia>
+                                        <img src="@($"data:image/jpeg;base64,{Convert.ToBase64String(imgData.Data)}")" height="60" />
+                                    </MudCardMedia>
+                                </MudCard>
+                            }
+                        }
+                        else
+                        {
+                            <div>No images available</div>
+                        }
+                    </MudGrid>
+                </MudContainer>
+            </MudItem> *@
+
+
+           
+
+            @* @if (BOMImages != null && BOMImages.Images != null && BOMImages.Images.Any())
+        {
+        <MudItem md="12" sm="12" xs="12">
+        <MudContainer>
+        <MudGrid Class="d-flex mt-2" Spacing="2" Justify="Justify.Center">
+        @foreach (var image in BOMImages.Images)
+        {
+        <MudCard Class="pa-2" Outlined="true" Style="width: 100px;">
+        <MudCardMedia @onclick="OpenDialog" Image="@($"data:image/jpeg;base64,{Convert.ToBase64String(image.Data)}")" Height="60" />
+        </MudCard>
+        }
+        </MudGrid>
+        </MudContainer>
+        </MudItem>
+        }
+        else
+        {
+        <MudItem md="12" sm="12" xs="12" Class="d-flex justify-center">
+        <div style="border: 2px dotted gray; padding: 10px; text-align: center; width: 250px; height: 75px">
+        <p>No images available</p>
+        <MudItem>
+        <MudButton StartIcon="@Icons.Material.Filled.Add" Color="Color.Primary" OnClick="@(async () => await AddBOMImagesAsync(new BOMImgDTO {
+        ProjectNumber = SearchText,
+        JobNo = selectedJob?.Name,
+        SubJob = selectedSubJob.Equipment.ToString(),
+        BOM = selectedBOM.Name }))">
+        </MudButton>
+        </MudItem>
+        </div>
+        </MudItem>
+        }
+        *@
+            <MudItem md="4" sm="12" xs="12">
+                @if (selectedBOM != null && WipDataAll.Count() > 0)
+                {
+                    var filteredData = WipDataAll.Where(data =>
+                    data.Project == SearchText &&
+                    data.Job == selectedJob.Name &&
+                    data.SubJob == selectedSubJob.Equipment.ToString() &&
+                    data.BOM == selectedBOM.Name);
+
+                    if (filteredData.Any())
+                    {
+                        latestWipData = filteredData.OrderByDescending(data => data.MovedDateAndTime).FirstOrDefault();
+
+                        if (latestWipData.FutureLocation != null)
+                        {
+                            CurrentLoc.Location = latestWipData.FutureLocation;
+                            <MudSelect Variant="Variant.Outlined" @bind-Value="SelectedCurrentLocation" AnchorOrigin="Origin.BottomCenter" Label="Current Location" OpenIcon="@Icons.Material.Filled.LocationCity" AdornmentColor="Color.Primary">
+                                <MudSelectItem Value="@CurrentLoc">@CurrentLoc.Location</MudSelectItem>
+                                </MudSelect>
+                        }
+                        else
+                        {
+                            CurrentLoc.Location = "N/A";
+                        }
+                    }
+                    else
+                    {
+                        CurrentLoc.Location = "N/A";
+                    }
+                }
+                else
+                {
+                    CurrentLoc.Location = "N/A";
+                }
+
+                @if (CurrentLoc.Location == "N/A")
+                {
+                    <MudSelect Variant="Variant.Outlined" @bind-Value="SelectedCurrentLocation" AnchorOrigin="Origin.BottomCenter" Label="Current Location" OpenIcon="@Icons.Material.Filled.LocationCity" AdornmentColor="Color.Primary">
+                        @foreach (var location in WipLocations)
+                        {
+                            <MudSelectItem Value="@location">@location.Location</MudSelectItem>
+                        }
+                    </MudSelect>
+                }
+            </MudItem>
+
+
+            <MudItem md="4" sm="12" xs="12">
+                <MudSelect Variant="Variant.Outlined" @bind-Value="SelectedFutureLocation" AnchorOrigin="Origin.BottomCenter" Label="Future Location" OpenIcon="@Icons.Material.Filled.LocationCity" AdornmentColor="Color.Primary">
+                    @foreach (var location in WipLocations)
+                    {
+                        <MudSelectItem Value="@location">@location.Location</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+
+            <MudItem md="4" sm="12" xs="12">
+                <MudSelect Variant="Variant.Outlined" @bind-Value="SelectedProjectStatus" AnchorOrigin="Origin.BottomCenter" Label="Status" OpenIcon="@Icons.Material.Filled.Quiz" AdornmentColor="Color.Primary">
+                    @foreach (var ps in projectStatus)
+                    {
+                        <MudSelectItem Value="@ps">@ps</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+
+            <MudItem Class="d-flex justify-end mt-4" md="12" sm="12" xs="12">
+                <MudButton Class="mr-2" Variant="Variant.Filled" Size="Size.Small" Color="Color.Primary" OnClick="MoveBOMAsync">Move</MudButton>
+                <MudButton Variant="Variant.Filled" Size="Size.Small" Color="Color.Error" OnClick="ClearAll">Cancel</MudButton>
+            </MudItem>
+        }
+    </MudGrid>
+</MudContainer>
+
+<style>
+    .center {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+</style>
+
+
+@code {
+    public BOMImagesDTO? BOMimagesData { get; set; }
+    private WIPLocation? CurrentLoc = new WIPLocation();
+    public string? SearchText { get; set; }
+    private WIPLocation? SelectedCurrentLocation { get; set; }
+    private WIPLocation? SelectedFutureLocation { get; set; }
+    private string? SelectedProjectStatus { get; set; }
+    private List<WIPLocation>? WipLocations { get; set; } = new List<WIPLocation>();
+    private List<WIPData>? WipDataAll { get; set; } = new List<WIPData>();
+    public Project? project;
+    public Job? selectedJob;
+    public SubJob? selectedSubJob;
+    public BOM? selectedBOM;
+    public Material? selectedMaterial;
+    public BOMImage? BOMImages;
+    public WIPData? latestWipData;
+    public IEnumerable<WIPData>? filteredWipData;
+    public IEnumerable<BOMImage>? bomImagesAll;
+    private List<WIPData> WIPDataList { get; set; } = new List<WIPData>();
+
+    private List<string> projectStatus = new List<string>();
+
+
+    private bool resetValueOnEmptyText;
+    private bool coerceText;
+    private bool coerceValue;
+
+    private bool IsPrintQrButtonEnabled = false;
+
+    private IEnumerable<string> MaxCharacters(string ch)
+    {
+        if (!string.IsNullOrEmpty(ch) && 250 <= ch?.Length)
+            yield return "Max 250 characters";
+    }
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+
+        projectStatus.Add("Not Started");
+        projectStatus.Add("WIP");
+        projectStatus.Add("Hold and Moved");
+        projectStatus.Add("Completed");
+
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            var locationsResponse = await _httpClient.GetAsync(ApiConstants.GetWIPLocations);
+            if (locationsResponse.IsSuccessStatusCode)
+            {
+                var locationResult = await locationsResponse.Content.ReadFromJsonAsync<List<WIPLocation>>();
+                if (locationResult != null)
+                {
+                    WipLocations = locationResult.OrderByDescending(l => l.Id).ToList();
+                }
+            }
+
+            var wipData = await _httpClient.GetAsync(ApiConstants.GetAllWIPDataFromAppDB);
+            if (wipData.IsSuccessStatusCode)
+            {
+                var wipDataResult = await wipData.Content.ReadFromJsonAsync<List<WIPData>>();
+                if (wipDataResult != null)
+                {
+                    WipDataAll = wipDataResult.OrderByDescending(l => l.Id).ToList();
+                }
+            }
+
+            var bomImages = await _httpClient.GetAsync(ApiConstants.GetAllBOMImages);
+            if (bomImages.IsSuccessStatusCode)
+            {
+                var bomImagesResult = await bomImages.Content.ReadFromJsonAsync<List<BOMImage>>();
+                if (bomImagesResult != null)
+                {
+                    bomImagesAll = bomImagesResult;
+                }
+            }
+
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error Occured {ex.Message}", Severity.Warning);
+        }
+
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SearchProjectData();
+        }
+    }
+
+    private async Task SearchProjectData()
+    {
+        if (string.IsNullOrWhiteSpace(SearchText))
+        {
+            Snackbar.Add("Please enter a project number.", Severity.Error);
+            return;
+        }
+
+        var response = await _httpClient.GetAsync($"{ApiConstants.GetCSIProjects}/{SearchText}");
+        // var response = await _httpClient.GetAsync($"https://localhost:7006/api/CSIProjectInventory/GCSIProj/{SearchText}");
+
+        if (response.IsSuccessStatusCode)
+        {
+            project = await response.Content.ReadFromJsonAsync<Project>();
+
+            if (project == null)
+            {
+                Snackbar.Add("No project data found.", Severity.Warning);
+            }
+        }
+        else
+        {
+            if (response.ReasonPhrase == "Not Found")
+            {
+                Snackbar.Add("Unable to locate project data within CSI-Syteline.", Severity.Error);
+            }
+            else
+            {
+                Snackbar.Add($"Failed to load project data: {response.ReasonPhrase}", Severity.Error);
+            }
+        }
+
+        try
+        {
+            var wipresponse = await _httpClient.GetAsync($"{ApiConstants.GetWIPDataFromAppDB}/{SearchText}");
+
+            if (wipresponse.IsSuccessStatusCode)
+            {
+                var wipresult = await wipresponse.Content.ReadFromJsonAsync<List<WIPData>>();
+                if (wipresult != null)
+                {
+                    WIPDataList = wipresult;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error Occured {ex.Message}", Severity.Warning);
+        }
+    }
+
+    public async Task GetImagesData()
+    {
+        if (selectedBOM != null)
+        {
+            try
+            {
+                var wipDTO = new WIPDTO
+                    {
+                        Project = SearchText,
+                        Job = selectedJob?.Name,
+                        SubJob = int.Parse(selectedSubJob?.Equipment),
+                        BOM = selectedBOM.Name
+                    };
+                var jsonPart = JsonConvert.SerializeObject(wipDTO);
+                var content = new StringContent(jsonPart, Encoding.UTF8, "application/json");
+
+                // var response = await _httpClient.PostAsync("https://localhost:7006/api/BOMImage/gd", content);
+                var response = await _httpClient.PostAsync(ApiConstants.GetBOMImages, content);
+                if (response.IsSuccessStatusCode)
+                {
+                    var jsonContent = await response.Content.ReadAsStringAsync();
+                    BOMImages = JsonConvert.DeserializeObject<BOMImage>(jsonContent);
+                }
+                // else
+                // {
+                //     Snackbar.Add($"Error fetching images: {response.ReasonPhrase}", Severity.Error);
+                // }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error fetching images: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private void OpenViewPartDetailsDialog()
+    {
+        if (selectedMaterial == null)
+        {
+            Snackbar.Add("Select Part/Materials Number", Severity.Warning);
+            return;
+        }
+
+        var partDetails = new PartDetailsDTO()
+            {
+                PartNumber = selectedMaterial.Name,
+                PartDescription = selectedMaterial.Description,
+                Source = selectedMaterial.Source
+            };
+
+        var options = new DialogOptions { FullWidth = true, DisableBackdropClick = true };
+
+        var parameters = new DialogParameters<PartDetailsPage>();
+        parameters.Add("Materials", partDetails);
+
+        DialogService.Show<PartDetailsPage>("Materials", parameters, DialogSettings.DialogOptionsImage);
+    }
+
+    // private void OpenDialog()
+    // {
+
+    //     var options = new DialogOptions { FullWidth = true, DisableBackdropClick = true };
+
+    //     var parameters = new DialogParameters<ImageDisplayDialog>();
+    //     parameters.Add("Images", BOMImages.Images);
+
+    //     DialogService.Show<WIPImageDisplayDialog>("Images", parameters, DialogSettings.DialogOptionsImage);
+    // }
+
+    private void OpenDialog()
+    {
+        var options = new DialogOptions { FullWidth = true, DisableBackdropClick = true };
+
+        var parameters = new DialogParameters<ImageDisplayDialog>();
+
+        // Check if BOMImages is not null and its Images property is not null
+        if (BOMImages != null && BOMImages.Images != null)
+        {
+            parameters.Add("Images", BOMImages.Images);
+        }
+        else
+        {
+            // Handle the case when BOMImages or its Images property is null
+            // For example, you could pass an empty list:
+            parameters.Add("Images", new List<WIPImage>());
+        }
+
+        DialogService.Show<WIPImageDisplayDialog>("Images", parameters, DialogSettings.DialogOptionsImage);
+    }
+
+
+    private async Task AddBOMImagesAsync(BOMImgDTO bomImagesDTO)
+    {
+        var options = new DialogOptions { FullWidth = true };
+        var parameters = new DialogParameters<ImageDisplayDialog>();
+        parameters.Add("BOMImagesDTO", bomImagesDTO);
+
+        CompletionService.CompletionChanged += async (sender, args) =>
+        {
+            await UpdateBOMImageAsync();
+        };
+
+        DialogService.Show<WIPAddImageDialog>("WIPIMAGES", parameters, DialogSettings.DialogOptionsAddEditDelete);
+
+    }
+
+    private async Task UpdateBOMImageAsync()
+    {
+        BOMimagesData = await localStorage.GetItemAsync<BOMImagesDTO>("BOMImageData");
+        StateHasChanged();
+    }
+
+
+    private async void MoveBOMAsync()
+    {
+
+        if (SearchText != null || selectedJob != null || selectedSubJob != null || selectedBOM != null)
+        {
+            if (SelectedCurrentLocation == null)
+            {
+                Snackbar.Add("Current Location is required", Severity.Warning);
+                return;
+            }
+
+            if (SelectedFutureLocation == null)
+            {
+                Snackbar.Add("Future Location is required", Severity.Warning);
+                return;
+            }
+
+            if (SelectedProjectStatus == null)
+            {
+                Snackbar.Add("Project Status is required", Severity.Warning);
+                return;
+            }
+
+            if (SelectedCurrentLocation.Location == SelectedFutureLocation.Location)
+            {
+                Snackbar.Add("Current Location and Future Location cannot be the same", Severity.Warning);
+                return;
+            }
+
+            var userData = await localStorage.GetItemAsync<UserPagesAndRouter>("UserData");
+            string wipMovedBy = "User";
+
+            if (userData != null)
+            {
+                wipMovedBy = userData.UserName;
+            }
+
+            WIPDataDTO wipDataDTO = new WIPDataDTO()
+                {
+                    SelectedProject = SearchText,
+                    SelectedJob = selectedJob.Name,
+                    SelectedSubJob = selectedSubJob.Equipment,
+                    SelectedBOM = selectedBOM.Name,
+                    SelectedCurrentLocation = SelectedCurrentLocation.Location,
+                    SelectedFutureLocation = SelectedFutureLocation.Location,
+                    SelectedProjectStatus = SelectedProjectStatus,
+                    MovedDateAndTime = DateTime.Now,
+                    MovedBy = wipMovedBy,
+                    IsLocationVerified = false,
+                    LocVerifiedDateAndTime = DateTime.MinValue
+                };
+
+            var jsonPart = JsonConvert.SerializeObject(wipDataDTO);
+            var content = new StringContent(jsonPart, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PostAsync(ApiConstants.AddWIPDataToDB, content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var BOMImageData = await localStorage.GetItemAsync<BOMImagesDTO>("BOMImageData");
+                var jsonData = JsonConvert.SerializeObject(BOMImageData);
+
+                var imagecontent = new StringContent(jsonData, Encoding.UTF8, "application/json");
+
+
+                var imageresponse = await _httpClient.PostAsync(ApiConstants.AddBOMImage, imagecontent);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    await localStorage.RemoveItemAsync("BOMImageData");
+                    Console.WriteLine("Images added successfully.");
+
+                }
+
+                Snackbar.Add("WIP Data moved successfully", Severity.Success);
+                ClearAll();
+                IsPrintQrButtonEnabled = true;
+            }
+
+            else
+            {
+                Snackbar.Add($"Error: {response.ReasonPhrase}", Severity.Error);
+            }
+        }
+    }
+
+    private void ClearAll()
+    {
+        selectedJob = null;
+        selectedSubJob = null;
+        selectedBOM = null;
+        selectedMaterial = null;
+        project = null;
+        BOMImages = null;
+        SelectedCurrentLocation = null;
+        SelectedFutureLocation = null;
+        SelectedProjectStatus = null;
+        BOMimagesData = null;
+    }
+    public class BOMImgDTO
+    {
+        public string ProjectNumber { get; set; }
+        public string JobNo { get; set; }
+        public string SubJob { get; set; }
+        public string BOM { get; set; }
+    }
+}

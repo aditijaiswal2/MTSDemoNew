@@ -1,0 +1,104 @@
+﻿@page "/sdvc"
+
+@inject HttpClient _httpClient
+@inject ISnackbar Snackbar
+
+<MudContainer Style="height: calc(100vh);">
+    <MudGrid Class="d-flex Justify-arround">
+        <MudItem md="12" sm="12" xs="12" class="mb-2">
+
+            <MudText Typo="Typo.h6" Style="font-size: 16px;margin-top:30px;">SYNC CSISYTELINE DATA</MudText>
+        </MudItem>
+        <MudItem md="6" sm="12" xs="12" Style="margin-top:-5px; margin-inline-start: 184px;">
+            <MudSelect T="string" Label="Select Data to Sync" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" @bind-Value="selectedOption"  >
+                <MudSelectItem Value="@("Sync CSI Project Data")" />
+                <MudSelectItem Value="@("Sync CSI Part Data")" />
+            </MudSelect>
+
+            @if (selectedOption == "Sync CSI Project Data")
+            {
+                <div class="d-flex justify-center" style="margin-top:20px;">
+                <MudTextField Label="Enter Project Number" Style="margin-top:20px;" Variant="Variant.Outlined" @bind-Value="projectNumber" />
+                </div>
+                <div class="d-flex justify-center" style="margin-top:15px;">
+                    <MudButton Class="mr-2" Variant="Variant.Filled" Size="Size.Small" Color="Color.Primary" OnClick="SyncProjectData">Sync</MudButton>
+                </div>
+               
+            }
+
+             @* <div class="d-flex justify-center" style="margin-top:15px;">
+            @if (selectedOption == "Sync CSI Project Data")
+            {
+                <MudButton Class="mr-2" Variant="Variant.Filled" Size="Size.Small" Color="Color.Primary" OnClick="SyncProjectData">Sync</MudButton>
+               
+            } *@
+
+            @if (selectedOption == "Sync CSI Part Data")
+            {
+                <div class="d-flex justify-center" style="margin-top:15px;">
+                <MudButton Class="mr-2" Variant="Variant.Filled" Size="Size.Small" Color="Color.Primary" OnClick="SyncPartData">Sync</MudButton>
+                </div>
+            }
+            
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+@code {
+    string selectedOption;
+    string projectNumber;
+
+
+    private async void SyncProjectData()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(projectNumber))
+            {
+                Snackbar.Add("Please enter project number.", Severity.Error);
+                return;
+            }
+
+            var response = await _httpClient.GetAsync($"https://localhost:7006/api/CSIPartInventory/GCSIProj/{projectNumber}");
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Project Data Sync Successfully.", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Project number not found, Please enter Correct ProjectNumber", Severity.Warning);
+            }
+
+        }
+        catch (HttpRequestException ex)
+        {
+            Snackbar.Add("An error occurred while syncing Project data: " + ex.Message, Severity.Error);
+        }
+    }
+
+
+    private async void SyncPartData()
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync("https://localhost:7006/api/CSIPartInventory/GCSIPar");
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Part Data Sync Successfully.", Severity.Success);
+            }
+
+            else
+            {
+                Snackbar.Add("Part Data not Sync", Severity.Warning);
+            }
+
+        }
+        catch (HttpRequestException ex)
+        {
+            Snackbar.Add("An error occurred while syncing Part data: " + ex.Message, Severity.Error);
+        }
+    }
+}
+
+
+   

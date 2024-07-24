@@ -1,0 +1,103 @@
+﻿@page "/wipm"
+@using ITS.Shared.Models.Project
+@using MudBlazor
+@using System.Collections.Generic
+
+@inject ISnackbar Snackbar
+
+<MudContainer Style="height: calc(100vh);">
+    <MudGrid Class="d-flex justify-around">
+        <MudItem md="11" sm="12" xs="12" class="mb-2">
+            <MudItem lg="12" md="12">
+                <MudTextField T="string" MaxLength="250" Immediate="true" 
+                              Label="Input Project Number" @bind-Value="SearchText"
+                              Variant="Variant.Outlined" @onkeydown="HandleKeyDown"></MudTextField>
+            </MudItem>
+        </MudItem>
+
+        <MudItem Class="pa-2 d-flex justify-end" md="1" sm="12" xs="12">
+            <div style="padding: 20px 20px; margin-right: -29px ">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SearchProjectData">Search</MudButton>
+            </div>
+        </MudItem>
+        @if (project != null)
+        {
+            Console.WriteLine("true");
+        }
+
+      
+
+       
+    </MudGrid>
+</MudContainer>
+
+@code {
+    public string? SearchText { get; set; }
+    private List<WIPData>? WipDataAll { get; set; } = new List<WIPData>();
+    public Project? project;
+    private List<WIPData> WIPDataList { get; set; } = new List<WIPData>();
+    public Job? selectedJob;
+    private IEnumerable<ITSPartLocationQty>? iTSParts;
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SearchProjectData();
+        }
+    }
+  
+
+    private async Task SearchProjectData()
+    {
+        if (string.IsNullOrWhiteSpace(SearchText))
+        {
+            Snackbar.Add("Please enter a project number.", Severity.Error);
+            return;
+        }
+
+        //var response = await _httpClient.GetAsync($"{ApiConstants.GetCSIProjects}/{SearchText}");
+         var response = await Http.GetAsync($"https://localhost:7006/api/CSIProjectInventory/GCSIProj/{SearchText}");
+
+        if (response.IsSuccessStatusCode)
+        {
+            project = await response.Content.ReadFromJsonAsync<Project>();
+
+            if (project == null)
+            {
+                Snackbar.Add("No project data found.", Severity.Warning);
+            }
+        }
+        else
+        {
+            if (response.ReasonPhrase == "Not Found")
+            {
+                Snackbar.Add("Unable to locate project data within CSI-Syteline.", Severity.Error);
+            }
+            else
+            {
+                Snackbar.Add($"Failed to load project data: {response.ReasonPhrase}", Severity.Error);
+            }
+        }
+
+        try
+        {
+            var wipresponse = await Http.GetAsync($"https://localhost:7006/api/CSIProjectInventory/GCSIProj/{SearchText}");
+            //var response1 = await Http.GetAsync($"https://localhost:7006/api/ITSPartLocationQty/gplq/");
+
+            if (wipresponse.IsSuccessStatusCode)
+            {
+                var wipresult = await wipresponse.Content.ReadFromJsonAsync<List<WIPData>>();
+                if (wipresult != null)
+                {
+                    WIPDataList = wipresult;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error Occured {ex.Message}", Severity.Warning);
+        }
+    }
+
+}

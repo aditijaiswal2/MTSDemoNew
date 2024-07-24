@@ -1,0 +1,39 @@
+﻿@page "/iivc"
+@using ITS.Client.Dialog
+@using ITS.Shared.Models
+@using Microsoft.AspNetCore.Components.Forms
+@using System.Net.Http;
+@using Newtonsoft.Json;
+
+@inject IDialogService DialogService
+
+<MudContainer FixedHeight="true" Style="height: 100%;">
+    <MudItem md="12" sm="12" xs="12" class="mb-2">
+        <MudText Typo="Typo.h6" Style="font-size: 16px; margin-bottom:18px;">MATERIALS</MudText>
+    </MudItem>
+    <MudTabs>
+        <MudTabPanel Text="Add" Icon="@Icons.Material.Filled.Add">
+             <div style="height: calc(100vh);">
+                <AddInventory></AddInventory>
+                </div>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Update" Icon="@Icons.Material.Filled.Update">
+             <div style="height: calc(100vh);">
+            <UpdateInventory></UpdateInventory>
+            </div>
+        </MudTabPanel>
+        <MudTabPanel Text="Delete" Icon="@Icons.Material.Filled.Delete">
+             <div style="height: calc(100vh);">
+            <DeleteInventory></DeleteInventory>
+            </div>
+        </MudTabPanel>
+    </MudTabs>
+</MudContainer>
+
+
+@code {
+
+
+}
+

@@ -1,0 +1,143 @@
+﻿@page "/rvc"
+
+@using ITS.Client.Dialog
+@using ITS.Client.Dialog.Role;
+@using ITS.Client.Dialog.QRCode;
+@using ITS.Client.Utitlity;
+@using ITS.Shared.DTOs
+@using ITS.Shared.Models
+@using MudBlazor
+@using System.Collections.Generic
+@using System.Text
+@using ITS.Shared.Entities;
+
+@inject IDialogService DialogService
+@inject IJSRuntime jsRuntime
+@inject ISnackbar Snackbar
+@inject HttpClient HttpClient
+@inject IDialogCompletionService CompletionService
+
+<MudContainer Class="pa-2" Fixed="true" Style="height: 100%;">
+    <MudGrid Class="d-flex justify-content-around">
+        <MudItem md="11" sm="12" xs="12" class="mb-2 ml-2" >
+            <MudItem md="12" sm="12" xs="12">
+                <MudButton Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Primary" OnClick="@AddRole">ADD</MudButton>
+            </MudItem>
+            <br />
+            <div style="max-height: 500px; max-width:100%;">
+                <MudTable Items="@appRoles" Class="table table-bordered table-striped mt-4 highlight-border">
+                    <HeaderContent>
+                        <MudTh>Role Id</MudTh>
+                        <MudTh Style="text-align:center">Roles</MudTh>
+                        @* <MudTh>Read Only</MudTh> *@
+                        <MudTh Style="text-align:center">Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate Context="appRoles">
+                        <MudTd>@appRoles.Id</MudTd>
+                        <MudTd Style="text-align:center">@appRoles.Name</MudTd>
+                        @* <MudTd>@appRoles.ReadOnly</MudTd> *@
+                        <MudTd Style="text-align:center">
+                            <MudButton StartIcon="@Icons.Material.Filled.Edit" Color="Color.Primary" OnClick="@(() => EditRole(appRoles))" />
+                            <MudButton StartIcon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => DeleteRole(appRoles))" />
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </div>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+@code {
+    private IEnumerable<RoleAddDto> roleAddDtos = new List<RoleAddDto>();
+    private IEnumerable<AppRole> appRoles = new List<AppRole>();
+    private Stream pdfStream;
+    private string pdfDataUrl;
+
+    private int currentPage = 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRole();
+    }
+
+    private async Task LoadRole()
+    {
+        try
+        {
+            Snackbar.Clear();
+            Snackbar.Configuration.PositionClass = Defaults.Classes.Position.TopCenter;
+
+            var roleResponse = await HttpClient.GetAsync("https://localhost:7006/api/Role/getrole");
+            if (roleResponse.IsSuccessStatusCode)
+            {
+
+                var roleResult = await roleResponse.Content.ReadFromJsonAsync<IEnumerable<AppRole>>();
+                if (roleResult != null)
+                {
+                    appRoles  = roleResult.ToList();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error Occured {ex.Message}", Severity.Warning);
+        }
+    }
+
+    async Task EditRole(AppRole appRoles)
+
+    {
+        var options = new DialogOptions { FullWidth = true };
+        var parameters = new DialogParameters<EditRolesDialog> { { x => x.appRoles, appRoles } };
+
+        var dialog = await DialogService.ShowAsync<EditRolesDialog>("Edit Role", parameters, options);
+
+        CompletionService.CompletionChanged += async (sender, args) =>
+        {
+            await UpdateRolesDataAsync();
+        };
+    }
+
+    async Task DeleteRole(AppRole appRoles)
+    {
+        var options = new DialogOptions { FullWidth = true, };
+        var parameters = new DialogParameters<DeleteRoleDialog> { { x => x.appRoles, appRoles } };
+
+        var dialog = await DialogService.ShowAsync<DeleteRoleDialog>("Delete Server", parameters, options);
+
+        CompletionService.CompletionChanged += async (sender, args) =>
+        {
+            await UpdateRolesDataAsync();
+        };
+    }
+
+    async Task AddRole()
+    {
+        var options = new DialogOptions { FullWidth = true };
+        DialogService.Show<AddRoleDialog>("Add Role", options);
+
+        CompletionService.CompletionChanged += async (sender, args) =>
+        {
+            await UpdateRolesDataAsync();
+        };
+    }
+
+    private async Task UpdateRolesDataAsync()
+    {
+        if (CompletionService.IsCompleted)
+        {
+            var roleResponse = await HttpClient.GetAsync("https://localhost:7006/api/Role/getrole");
+            if (roleResponse.IsSuccessStatusCode)
+            {
+
+                var roleResult = await roleResponse.Content.ReadFromJsonAsync<IEnumerable<AppRole>>();
+                if (roleResult != null)
+                {
+                    appRoles = roleResult.ToList();
+                    StateHasChanged();
+                }
+            }
+        }
+    }
+}
+

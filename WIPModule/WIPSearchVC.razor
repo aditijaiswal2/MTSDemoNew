@@ -1,0 +1,570 @@
+﻿@page "/wsvc"
+@using ITS.Client.Dialog.Images
+@using ITS.Client.Dialog.WIP
+@using ITS.Client.Utitlity
+@using ITS.Shared.Models.Project
+@using System.Text
+@using static ITS.Shared.DTOs.WIP.WIPSearchDTO
+
+@inject HttpClient _httpClient
+@inject ISnackbar Snackbar
+@inject IDialogCompletionService CompletionService
+
+<MudContainer Style="height: calc(100vh);">
+    <MudGrid Class="d-flex Justify-arround">
+        <MudItem md="11" sm="12" xs="12" class="mb-2">
+            <MudItem lg="12" md="12">
+                <MudTextField T="string" MaxLength="250" Immediate="true" Validation="@(new Func<string, IEnumerable<string>>(MaxCharacters))"
+                    Label="Input Project Number" @bind-Value="SearchText"
+                              Variant="Variant.Outlined" @onkeydown="HandleKeyDown"></MudTextField>
+            </MudItem>
+        </MudItem>
+
+        <MudItem Class="pa-2 d-flex justify-end" md="1" sm="12" xs="12">
+            <div style="padding: 20px 20px; margin-right: -29px ">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SearchProjectData">Search</MudButton>
+            </div>
+        </MudItem>
+
+        @if (searchedWipData != null)
+        {
+            <MudItem md="6" sm="12" xs="12">
+                <MudSelect T="JobDTO" Label="Job Number" @bind-Value="selectedJob" Variant="Variant.Outlined">
+                    @foreach (var job in searchedWipData.Jobs)
+                    {
+                        <MudSelectItem Value="@job">@job.JobNumber</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+        }
+
+
+        @if (selectedJob != null)
+        {
+            var subjobs = searchedWipData.Jobs.FirstOrDefault(j => j.JobNumber == selectedJob.JobNumber)?.SubJobs;
+
+            <MudItem md="6" sm="12" xs="12">
+                <MudSelect T="BOMDTO" Label="Sub-Job Number/BOM" @bind-Value="selectedBOM" Variant="Variant.Outlined">
+                    @foreach (SubJobDTO subJob in subjobs)
+                    {
+                        var boms = subJob.BOMs;
+                        @foreach (var bom in boms)
+                        {
+                            @if (subJob.SubJobNumber == bom.SubJobNumber)
+                            {
+                                <MudSelectItem Value="@bom">@($"{subJob.SubJobNumber}/{bom.BOMNumber}")</MudSelectItem>
+                            }
+                        }
+                    }
+                </MudSelect>
+            </MudItem>
+
+            @foreach (var subJob in subjobs)
+            {
+                var matchingBOM = subJob.BOMs.FirstOrDefault(b => b == selectedBOM);
+                if (matchingBOM != null)
+                {
+                    selectedSubJob = subJob;
+                    break;
+                }
+            }
+
+            GetImagesData();
+        }
+
+        @* @if (selectedJob != null)
+        {
+            <MudItem md="4" sm="12" xs="12">
+                <MudSelect Label="Sub-Job Number" @bind-Value="selectedSubJob" Variant="Variant.Outlined">
+                    @foreach (var subJob in searchedWipData.Jobs.FirstOrDefault(j => j.JobNumber == selectedJob.JobNumber)?.SubJobs)
+                    {
+                        <MudSelectItem Value="@subJob">@subJob.SubJobNumber</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+        }
+
+        @if (selectedSubJob != null)
+        {
+            <MudItem md="4" sm="12" xs="12">
+                <MudSelect Label="BOM" @bind-Value="selectedBOM" Variant="Variant.Outlined">
+                    @foreach (var bom in searchedWipData.Jobs.FirstOrDefault(j => j.JobNumber == selectedJob.JobNumber)
+                ?.SubJobs.FirstOrDefault(sj => sj.SubJobNumber == selectedSubJob.SubJobNumber)
+                ?.BOMs)
+                    {
+                        <MudSelectItem Value="@bom">@bom.BOMNumber</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+        } *@
+
+        @if (selectedBOM != null)
+        {
+            @* @if (BOMImages != null && BOMImages.Images != null && BOMImages.Images.Any())
+            {
+                <MudItem md="12" sm="12" xs="12">
+                    <MudContainer>
+                        <MudGrid Class="d-flex mt-2" Spacing="2" Justify="Justify.Center">
+                            @foreach (var image in BOMImages.Images)
+                            {
+                                <MudCard Class="pa-2" Outlined="true" Style="width: 100px;">
+                                    <MudCardMedia @onclick="OpenDialog" Image="@($"data:image/jpeg;base64,{Convert.ToBase64String(image.Data)}")" Height="60" />
+                                </MudCard>
+                            }
+                        </MudGrid>
+                    </MudContainer>
+                </MudItem>
+            }
+            else
+            {
+                // Display nothing
+            } *@
+
+            @if (bomImagesAll != null || bomImagesAll.Count() > 0)
+            {
+                var filteredBomImages = bomImagesAll.Where(data =>
+                data.Project == SearchText &&
+                data.Job == selectedJob.JobNumber &&
+                data.SubJob.ToString() == selectedSubJob.SubJobNumber &&
+                data.BOM == selectedBOM.BOMNumber);
+
+                if (filteredBomImages.Any())
+                {
+                    var bomImgRes = filteredBomImages.Select(x => x.Images).FirstOrDefault();
+                    <MudItem md="12" sm="12" xs="12">
+                        <MudContainer>
+                            <MudGrid Class="d-flex mt-2" Spacing="2" Justify="Justify.Center">
+                                @foreach (var image in bomImgRes)
+                                {
+                                    <MudCard Class="pa-2" Outlined="true" Style="width: 100px;">
+                                        <MudCardMedia @onclick="OpenDialog" Image="@($"data:image/jpeg;base64,{Convert.ToBase64String(image.Data)}")" Height="60" />
+                                    </MudCard>
+                                }
+                            </MudGrid>
+                        </MudContainer>
+                    </MudItem>
+                }
+            }
+            else
+            {
+                // display nothing
+            }
+
+            <MudItem md="12" sm="12" xs="12">
+                <div style="max-height: 500px; max-width:100%;">
+                    <MudTable Items="@selectedBOM.Details" TItem="BOMDTO" Class="table table-bordered table-striped mt-2">
+                        <HeaderContent>
+                            <MudTh Style="width:150px;text-align:center">Current Location</MudTh>
+                            <MudTh Style="width:150px;text-align:center">Future Location</MudTh>
+                            <MudTh Style="width:100px;text-align:center">Status</MudTh>
+                            <MudTh Style="width:150px;text-align:center">Moved Date & Time</MudTh>
+                            <MudTh Style="width:100px;text-align:center">Moved By</MudTh>
+                            <MudTh Style="width:100px;text-align:center">WIP QR</MudTh>
+                            <MudTh Style="width:100px;text-align:center">Location Verification</MudTh>
+                            <MudTh Style="width:100px;text-align:center">QR Scanned Date & Time</MudTh>
+                        </HeaderContent>
+                        <RowTemplate Context="bd">
+                            <MudTh Style="width:150px;text-align:center">@bd.CurrentLocation</MudTh>
+                                <MudTd Class="table-data-alignment">@bd.FutureLocation</MudTd>
+                                <MudTd Class="table-data-alignment">@bd.ProjectStatus</MudTd>
+                                <MudTd Class="table-data-alignment">@bd.MovedDateAndTime</MudTd>
+                                <MudTd Class="table-data-alignment">@bd.MovedBy</MudTd>
+                                <MudTd Class="table-data-alignment">
+                                    <MudButton StartIcon="@Icons.Material.Filled.QrCode" Color="Color.Tertiary" OnClick="@(() => GenerateQR(SearchText,selectedJob,selectedSubJob,selectedBOM,bd))" />
+                                </MudTd>
+                                @if (bd.IsLocationVerified)
+                                {
+                                    <MudTd Class="table-data-alignment">
+                                        <MudButton StartIcon="@Icons.Material.Filled.Verified" Color="Color.Success"/>
+                                    </MudTd>
+                                }
+                                else
+                                {
+                                    <MudTd Class="table-data-alignment">
+                                    <MudButton StartIcon="@Icons.Material.Filled.Verified" Variant="Variant.Outlined" Size=Size.Small Color="Color.Primary" OnClick="@(() => VerifyLocation(SearchText,selectedJob,selectedSubJob,selectedBOM,bd))">Verify</MudButton>
+                                    </MudTd>
+
+                                    @* <MudTd Class="table-data-alignment">
+                                        <MudButton Variant="Variant.Filled" Size="Size.Small" Color="Color.Error" OnClick="VerifyLocation">Verify</MudButton>
+                                    </MudTd> *@
+                                }
+
+                                @if (bd.LocVerifiedDateAndTime == DateTime.MinValue)
+                                {
+                                    <MudTd Class="table-data-alignment">Not Yet Verified</MudTd>
+                                }
+                                else
+                                {
+                                    <MudTd Class="table-data-alignment">@bd.LocVerifiedDateAndTime</MudTd>
+                                }
+                        </RowTemplate>
+                        <PagerContent>
+                            <MudTablePager PageSizeOptions="new int[] { 5, 10, 50, 100, int.MaxValue }" />
+                        </PagerContent>
+                        </MudTable>
+                    </div>
+                </MudItem>
+        }
+
+    </MudGrid>
+</MudContainer>
+
+<style>
+    .table-data-alignment {
+        text-align: center
+    }
+</style>
+
+@code {
+    public string? SearchText { get; set; }
+    public List<WIPData>? wipData;
+    public WIPData? latestWIPData;
+    public List<WIPData>? wipHistory;
+    private IEnumerable<WIPData> WipDatas = new List<WIPData>();
+
+    public ProjectDTO? project;
+    public JobDTO? selectedJob;
+    public SubJobDTO? selectedSubJob;
+    public BOMDTO? selectedBOM;
+    public BOMImage? BOMImages;
+    public ProjectDTO? searchedWipData;
+    public bool IsCompleted { get; set; } = false;
+    public IEnumerable<BOMImage>? bomImagesAll;
+
+    private IEnumerable<string> MaxCharacters(string ch)
+    {
+        if (!string.IsNullOrEmpty(ch) && 250 <= ch?.Length)
+            yield return "Max 250 characters";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+
+
+
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {                      
+
+            var bomImages = await _httpClient.GetAsync(ApiConstants.GetAllBOMImages);
+            if (bomImages.IsSuccessStatusCode)
+            {
+                var bomImagesResult = await bomImages.Content.ReadFromJsonAsync<List<BOMImage>>();
+                if (bomImagesResult != null)
+                {
+                    bomImagesAll = bomImagesResult;
+                }
+            }
+
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error Occured {ex.Message}", Severity.Warning);
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SearchProjectData();
+        }
+
+    }
+
+    private async Task SearchProjectData()
+    {
+        if (string.IsNullOrWhiteSpace(SearchText))
+        {
+            Snackbar.Add("Please enter a project number.", Severity.Error);
+            return;
+        }
+
+        var response = await _httpClient.GetAsync($"{ApiConstants.GetWIPDataFromAppDB}/{SearchText}");
+
+        if (response.IsSuccessStatusCode)
+        {
+            List<WIPData> wipData = await response.Content.ReadFromJsonAsync<List<WIPData>>();
+
+            if (wipData == null || wipData.Count == 0)
+            {
+                Snackbar.Add("No project data found.", Severity.Warning);
+                return;
+            }
+
+            var groupedBySProject = wipData.GroupBy(inv => inv.Project);
+            var sprojects = new List<ProjectDTO>();
+
+            foreach (var projectGroup in groupedBySProject)
+            {
+                var project = new ProjectDTO { ProjectNumber = projectGroup.Key, Jobs = new List<JobDTO>() };
+
+                var groupedByJob = projectGroup.GroupBy(inv => inv.Job);
+
+                foreach (var jobGroup in groupedByJob)
+                {
+                    var job = new JobDTO { JobNumber = jobGroup.Key, SubJobs = new List<SubJobDTO>() };
+
+                    var groupedBySubJob = jobGroup.GroupBy(inv => inv.SubJob);
+
+                    foreach (var subJobGroup in groupedBySubJob)
+                    {
+                        var subJob = new SubJobDTO { SubJobNumber = subJobGroup.Key.ToString(), BOMs = new List<BOMDTO>(), JobNumber = job.JobNumber };
+
+                        var groupedByBOM = subJobGroup.GroupBy(inv => inv.BOM);
+
+                        foreach (var bomGroup in groupedByBOM)
+                        {
+                            var bom = new BOMDTO { BOMNumber = bomGroup.Key, Details = new List<DetailDTO>(), SubJobNumber = subJob.SubJobNumber };
+
+                            bom.Details.AddRange(bomGroup.Select(inv => new DetailDTO 
+                                { 
+                                    CurrentLocation = inv.CurrentLocation,
+                                    FutureLocation = inv.FutureLocation, 
+                                    ProjectStatus = inv.ProjectStatus, 
+                                    MovedDateAndTime = inv.MovedDateAndTime, 
+                                    MovedBy = inv.MovedBy,
+                                    IsLocationVerified = inv.IsLocationVerified,
+                                    LocVerifiedDateAndTime = inv.LocVerifiedDateAndTime
+
+                                }).OrderByDescending(b => b.MovedDateAndTime));
+
+                            subJob.BOMs.Add(bom);
+                        }
+
+                        job.SubJobs.Add(subJob);
+                    }
+
+                    project.Jobs.Add(job);
+                }
+
+                searchedWipData = project;
+            }
+        }
+        else
+        {
+            if (response.ReasonPhrase == "Not Found")
+            {
+                Snackbar.Add("Unable to locate project data within CSI-Syteline.", Severity.Error);
+            }
+            else
+            {
+                Snackbar.Add($"Failed to load project data: {response.ReasonPhrase}", Severity.Error);
+            }
+        }
+    }
+
+    private void OpenDialog()
+    {
+        var options = new DialogOptions { FullWidth = true, DisableBackdropClick = true };
+
+        var parameters = new DialogParameters<ImageDisplayDialog>();
+        parameters.Add("Images", BOMImages.Images);
+
+        DialogService.Show<WIPImageDisplayDialog>("Images", parameters, DialogSettings.DialogOptionsImage);
+    }
+
+    public async Task GetImagesData()
+    {
+        if (selectedBOM != null)
+        {
+            try
+            {
+                var wipDTO = new WIPDTO
+                    {
+                        Project = SearchText,
+                        Job = selectedJob?.JobNumber,
+                        SubJob = int.Parse(selectedSubJob?.SubJobNumber),
+                        BOM = selectedBOM.BOMNumber
+                    };
+                var jsonPart = JsonConvert.SerializeObject(wipDTO);
+                var content = new StringContent(jsonPart, Encoding.UTF8, "application/json");
+
+                // var response = await _httpClient.PostAsync("https://localhost:7006/api/BOMImage/gd", content);
+                var response = await _httpClient.PostAsync(ApiConstants.GetBOMImages,content);
+                if (response.IsSuccessStatusCode)
+                {
+                    var jsonContent = await response.Content.ReadAsStringAsync();
+                    BOMImages = JsonConvert.DeserializeObject<BOMImage>(jsonContent);
+                }
+                // else
+                // {
+                //     Snackbar.Add($"Error fetching images: {response.ReasonPhrase}", Severity.Error);
+                // }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error fetching images: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    public async Task GenerateQR(string project, JobDTO job, SubJobDTO subjob, BOMDTO bom, DetailDTO bomDetails)
+    {
+        try
+        {
+            WipSearchQRDto searchDto = new WipSearchQRDto()
+                {
+                    Project = SearchText,
+                    Job = selectedJob?.JobNumber,
+                    SubJob = selectedSubJob?.SubJobNumber,
+                    BOM = selectedBOM.BOMNumber,
+                    CurrentLocation = bomDetails.CurrentLocation,
+                    FutureLocation = bomDetails.FutureLocation,
+                    ProjectStatus = bomDetails.ProjectStatus,
+                    MovedDateAndTime = bomDetails.MovedDateAndTime,
+                    MovedBy = bomDetails.MovedBy
+                };
+
+            var jsonPart = JsonConvert.SerializeObject(searchDto);
+            var content = new StringContent(jsonPart, Encoding.UTF8, "application/json");
+            // var response = await _httpClient.PostAsync("https://localhost:7006/api/WIPQRCode/wipsearchQR", content);
+            var response = await Http.PostAsync(ApiConstants.GenerateWIPSearchQr, content);
+
+            byte[] qrCodeBytes = null;
+
+            if (response.IsSuccessStatusCode)
+            {
+                using (var pdfStream = await response.Content.ReadAsStreamAsync())
+                {
+                    using (var memoryStream = new MemoryStream())
+                    {
+                        await pdfStream.CopyToAsync(memoryStream);
+                        qrCodeBytes = memoryStream.ToArray();
+                    }
+                }
+
+                WipQrDTO wipQr = new WipQrDTO()
+                    {
+                        Project = searchDto.Project,
+                        Job = searchDto.SubJob,
+                        SubJob = searchDto.SubJob,
+                        BOM = searchDto.BOM,
+                        CurrentLocation = bomDetails.CurrentLocation,
+                        FutureLocation = bomDetails.FutureLocation,
+                        ProjectStatus = searchDto.ProjectStatus,
+                        MovedDateAndTime = searchDto.MovedDateAndTime,
+                        MovedBy = searchDto.MovedBy,
+                        QRData = qrCodeBytes,
+                    };
+
+                var options = new DialogOptions { FullWidth = true };
+                var parameters = new DialogParameters { ["PrintQR"] = wipQr };
+
+                var dialog = await DialogService.ShowAsync<WIPSearchQRPrintDialog>("", parameters);
+
+            }
+            else
+            {
+                Snackbar.Add($"QR code generation failed with status code: {response.StatusCode}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error generating QR code: {ex.Message}", Severity.Error);
+        }
+    }
+
+    public async Task VerifyLocation(string project, JobDTO job, SubJobDTO subjob, BOMDTO bom, DetailDTO bomDetails)
+    {
+        VerifyLocationScannerDTO scannerDTO = new VerifyLocationScannerDTO()
+            {
+                Project = SearchText,
+                Job = selectedJob?.JobNumber,
+                SubJob = selectedSubJob?.SubJobNumber,
+                BOM = selectedBOM?.BOMNumber,
+                CurrentLocation = bomDetails.CurrentLocation,
+                FutureLocation = bomDetails.FutureLocation,
+                IsLocationVerified = false,
+                LocVerifiedDateAndTime = DateTime.Now
+            };
+        
+        var options = new DialogOptions
+            {
+                FullWidth = true,
+                DisableBackdropClick = true,
+                Position = DialogPosition.Center
+            };
+        var parameters = new DialogParameters { ["ScanQR"] = scannerDTO };
+
+        var dialog = await DialogService.ShowAsync<WIPSearchScanQR>("", parameters, options);
+
+        CompletionService.CompletionChanged += async (sender, args) =>
+    {
+        await UpdateDataAsync();
+    };
+    }
+
+    private async Task UpdateDataAsync()
+    {
+        try
+        {
+            if (searchedWipData != null)
+            {
+                var job = searchedWipData.Jobs.FirstOrDefault(j => j.JobNumber == selectedJob.JobNumber);
+                if (job != null)
+                {
+                    var subJob = job.SubJobs.FirstOrDefault(sj => sj.SubJobNumber == selectedSubJob.SubJobNumber);
+                    if (subJob != null)
+                    {
+                        var bom = subJob.BOMs.FirstOrDefault(b => b.BOMNumber == selectedBOM.BOMNumber);
+                        if (bom != null)
+                        {
+                            var response = await _httpClient.GetAsync($"{ApiConstants.GetWIPDataFromAppDB}/{SearchText}");
+
+                            if (response.IsSuccessStatusCode)
+                            {
+                                List<WIPData> wipDataToUpdate = await response.Content.ReadFromJsonAsync<List<WIPData>>();
+
+                                if (wipDataToUpdate != null)
+                                {
+                                    List<DetailDTO> res = wipDataToUpdate
+                                                            .Where(w => w.Project == SearchText &&
+                                                                w.Job == selectedJob.JobNumber &&
+                                                                w.SubJob == selectedSubJob.SubJobNumber &&
+                                                                w.BOM == selectedBOM.BOMNumber)
+                                                                .Select(w => new DetailDTO
+                                                                {
+                                                                            CurrentLocation =w.CurrentLocation,
+                                                                            FutureLocation= w.FutureLocation,
+                                                                            ProjectStatus = w.ProjectStatus,
+                                                                            MovedDateAndTime = w.MovedDateAndTime,
+                                                                            MovedBy = w.MovedBy,
+                                                                            IsLocationVerified = w.IsLocationVerified,
+                                                                            LocVerifiedDateAndTime = w.LocVerifiedDateAndTime
+                                                                })
+                                        .OrderByDescending(pq => pq.LocVerifiedDateAndTime)
+                                        .ToList();
+
+                                    selectedBOM.Details = res;
+
+                                    StateHasChanged();
+                                }
+                            }
+                            else
+                            {
+                                Console.WriteLine($"Error: {response.StatusCode}");
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                Console.WriteLine("No search results to update data.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+        }
+    }
+
+
+
+
+}

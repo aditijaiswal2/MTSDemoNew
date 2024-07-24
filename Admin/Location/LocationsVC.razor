@@ -1,0 +1,39 @@
+﻿@page "/lvc"
+@using ITS.Client.Pages.Account
+
+@inherits BaseAuthentication
+
+
+<MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6">
+    <MudTabPanel Text="Inventory Locations">
+         <div style="height: calc(100vh);">
+        <ITSLocationIndex></ITSLocationIndex>
+        </div>
+    </MudTabPanel>
+    <MudTabPanel Text="Part Locations">
+        <div style="height: calc(100vh);">
+        <ITSPartLocQtyIndex></ITSPartLocQtyIndex>
+        </div>
+    </MudTabPanel>
+</MudTabs>
+
+@* <MudContainer Class="pa-2" Fixed="true" Style="height: 100%; width: 100%">
+    <MudTabs Class="flex pa-2" Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6">
+            <MudTabPanel Text="Inventory Locations">
+                <div style="height: calc(100vh - 48px); overflow: hidden;margin-left:-44px ; ">
+                    <!-- Content for Inventory Locations -->
+                    <ITSLocationIndex></ITSLocationIndex>
+                </div>
+            </MudTabPanel>
+            <MudTabPanel Text="Part Locations">
+                <div style="height: calc(100vh - 48px); overflow: hidden;margin-left:-44px;">
+                    <!-- Content for Part Locations -->
+                    <ITSPartLocQtyIndex></ITSPartLocQtyIndex>
+                </div>
+            </MudTabPanel>
+        </MudTabs>
+</MudContainer> *@
+
+@code {
+
+}

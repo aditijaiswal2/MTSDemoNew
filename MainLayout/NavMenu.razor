@@ -1,0 +1,160 @@
+﻿@using ITS.Client.Pages.Account
+@using ITS.Shared.Entities;
+@using static ITS.Client.Pages.LoginVC;
+@inject NavigationManager NavManager
+@inject Blazored.LocalStorage.ILocalStorageService localStorage
+
+@inherits BaseAuthentication
+
+<MudNavMenu Class="mud-width-full custom-navmenu">
+    <img src="images/mg2.png" alt="Logo" class="px-4 mt-4" Style="width:150px;height:20px" />
+    @* <MudText Typo="Typo.h6" Class="px-4">Material</MudText>
+    <MudText Typo="Typo.body2" Class="px-4 mud-text-secondary">Tracking Management</MudText> *@
+    <MudText Typo="Typo.body2" Class="px-4 mt-2">Material Tracking Management</MudText>
+    <MudDivider Class="my-2" />
+
+    @if (BaseAuthentication.IsAuthenticated == false)
+    {
+        <MudNavLink Href="/aep"></MudNavLink>
+    }
+    else if (UserData != null)
+    {
+        foreach (var route in UserData.Router)
+        {
+            if (route != "/uvc" && route != "/lvc" && route != "/pivc" && route != "/wlvc" && route != "/sdvc" && route != "/crt")
+            @* if (route != "/uvc" && route != "/lvc" && route != "/pivc") *@
+            {
+                var icon = GetIconForRoute(route);
+                var displayName = GetDisplayNameForRoute(route);
+                <MudNavLink Href="@route" Icon="@icon" IconColor="Color.Primary">@displayName</MudNavLink>
+            }
+        }
+
+        if (UserData.Router.Contains("/uvc") || UserData.Router.Contains("/lvc") || UserData.Router.Contains("/pivc") || UserData.Router.Contains("/wlvc") || UserData.Router.Contains("/sdvc") || UserData.Router.Contains("/crt") )
+        @* if (UserData.Router.Contains("/uvc") || UserData.Router.Contains("/lvc") || UserData.Router.Contains("/pivc")) *@
+        {
+            <MudNavGroup Title="Settings" Icon="@Icons.Material.Filled.Settings" IconColor="Color.Primary" Expanded="false">
+                @if (UserData.Router.Contains("/uvc"))
+                {
+                    <MudNavLink Href="/uvc" Icon="@Icons.Material.Filled.People" IconColor="Color.Primary">Manage Users</MudNavLink>
+                }
+                @if (UserData.Router.Contains("/lvc"))
+                {
+                    <MudNavLink Href="/lvc" Icon="@Icons.Material.Filled.MyLocation" IconColor="Color.Primary">Manage Locations</MudNavLink>
+                }
+                @if (UserData.Router.Contains("/pivc"))
+                {
+                    <MudNavLink Href="/pivc" Icon="@Icons.Material.Filled.Image" IconColor="Color.Primary">Manage Parts Gallery</MudNavLink>
+                }
+                @if (UserData.Router.Contains("/wlvc"))
+                {
+                    <MudNavLink Href="/wlvc" Icon="@Icons.Material.Filled.ShareLocation" IconColor="Color.Primary">Manage WIP Location</MudNavLink>
+                }
+
+                @if (UserData.Router.Contains("/sdvc"))
+                {
+                    <MudNavLink Href="/sdvc" Icon="@Icons.Material.Filled.Sync" IconColor="Color.Primary">Sync CSISyteline Data</MudNavLink>
+                }
+
+                @if (UserData.Router.Contains("/crt"))
+                {
+                    <MudNavLink Href="/crt" Icon="@Icons.Material.Filled.AddBox" IconColor="Color.Primary">Cart ID</MudNavLink>
+                }
+               
+               
+            </MudNavGroup>
+        }
+    }
+</MudNavMenu>
+<style>
+    .custom-navmenu {       
+        overflow-y: auto; 
+        padding-top: 0rem; 
+    }
+
+
+
+</style>
+
+@code {
+    public UserPagesAndRouter? UserData { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        UserData = await localStorage.GetItemAsync<UserPagesAndRouter>("UserData");
+
+        // await localStorage.RemoveItemAsync("UserData");
+    }
+
+    private string GetIconForRoute(string route)
+    {
+        switch (route)
+        {
+            // case "/dvc":
+            //     return Icons.Material.Filled.Dashboard;
+             case "/psvc":
+               return Icons.Material.Filled.Search;
+            case "/sqvc":
+                return Icons.Material.Filled.QrCodeScanner;
+            // case "/ivc":
+            //     return Icons.Material.Filled.Storage;
+            case "/iivc":
+                return Icons.Material.Filled.Storage;
+            case "/wm":
+                return Icons.Material.Filled.ViewModule;
+            case "/mpvc":
+                return Icons.Material.Filled.WorkspacePremium;
+            case "/projects":
+                return Icons.Material.Filled.AllInbox;
+            case "/uvc":
+                return Icons.Material.Filled.People;
+            case "/lvc":
+                return Icons.Material.Filled.MyLocation;
+            case "/pivc":
+                return Icons.Material.Filled.Image;
+            case "/wlvc":
+                return Icons.Material.Filled.ShareLocation;
+             case "/crt":
+                 return Icons.Material.Filled.Add;
+            case "/wipm":
+                return Icons.Material.Filled.MoveUp;
+            default:
+                return "";
+        }
+    }
+
+    private string GetDisplayNameForRoute(string route)
+    {
+        switch (route)
+        {
+            // case "/dvc":
+            //     return "Dashboard";
+            case "/psvc":
+                return "Materials Search";
+            case "/sqvc":
+                return "QR Scanner";
+            case "/iivc":
+                return "Materials";
+            case "/wm":
+                return "WIP";
+            case "/mpvc":
+                return "My Projects";
+            case "/projects":
+                return "Projects";
+            case "/uvc":
+                return "Manage Users";
+            case "/lvc":
+                return "Manage Locations";
+            case "/pivc":
+                return "Manage Parts Gallery";
+            case "/wlvc":
+                return "Manage WIP Locations";
+             case "/crt":
+                 return "Cart ID";
+            case "/wipm":
+                return "WIP Move";
+            default:
+                return "";
+        }
+    }
+}

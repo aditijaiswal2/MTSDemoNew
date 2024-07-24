@@ -1,0 +1,310 @@
+﻿@page "/pivc"
+
+@using ITS.Client.Pages.Account
+@using ITS.Client.Dialog.Images;
+@using ITS.Client.Utitlity;
+@using ITS.Shared.Models
+@using ITS.Shared.DTOs
+@using Newtonsoft.Json
+@using Microsoft.AspNetCore.Components.Forms
+@using System.Net.Http.Json;
+@using System.Text;
+
+@inherits BaseAuthentication
+
+@inject IJSRuntime jsRuntime
+@inject ISnackbar Snackbar
+@inject HttpClient HttpClient
+@inject IDialogCompletionService CompletionService
+
+@if (BaseAuthentication.IsAuthenticated)
+{
+    <MudContainer Style="height: calc(100vh);" Class="mt-5">
+        <MudGrid Class="d-flex justify-between align-center">
+            <MudItem md="12" sm="12" xs="12" Class="mb-2">
+                <MudItem lg="12" md="12" Class="d-flex align-center flex-wrap">
+                    <MudTextField T="string" MaxLength="250" Immediate="true"
+                                  Label="Input Part Number" @bind-Value="SearchText"
+                                  Variant="Variant.Outlined" @onkeydown="HandleKeyDown">
+                    </MudTextField>
+                    <MudItem Class="ml-4">
+                        <MudButton Size="Size.Medium" Variant="Variant.Filled" Color="Color.Primary" OnClick="SearchPartsAsync">ADD</MudButton>
+                    </MudItem>
+                    @* <div style="padding: 20px 20px; margin-right: -20px ">
+                </div> *@
+                </MudItem>
+            </MudItem>
+            @* <MudItem Class="d-flex justify-center align-center mt-0" md="12" sm="12" xs="12">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Add" Disabled="@(!isAddButtonEnabled)">Add</MudButton>
+        </MudItem> *@
+
+            @if (iTSImages != null && iTSImages.Count() > 0)
+            {
+                <MudItem md="12" sm="12" xs="12">
+                    <div style="max-height: auto; max-width:100%;">
+                        <MudTable Items="iTSImages" TItem="ITSImage" Class="table table-bordered table-striped mt-2">
+                            <HeaderContent>
+                                <MudTh Style="width:100px;text-align:center">Part Number</MudTh>
+                                <MudTh Style="width:500px;text-align:center">Part Description</MudTh>
+                                <MudTh Style="width:100px;text-align:center">Image Count</MudTh>
+                                <MudTh Style="width:200px;text-align:center">Actions</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd Class="table-data-alignment">@context.PartNumber</MudTd>
+                                    <MudTd Class="table-data-alignment">@context.BOMDesc</MudTd>
+                                    <MudTd Class="table-data-alignment">@context.Images.Count() - Available</MudTd>
+                                <MudTd Class="table-data-alignment">
+                                    <MudButton StartIcon="@Icons.Material.Filled.Preview" Color="Color.Tertiary" OnClick="@(() => ViewImages(context.PartNumber))"></MudButton>
+                                    <MudButton StartIcon="@Icons.Material.Filled.Edit" Color="Color.Primary" OnClick="@(() => EditImages(context.PartNumber))"></MudButton>
+                                    <MudButton StartIcon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => DeleteImages(context.PartNumber))"></MudButton>
+                                </MudTd>
+                            </RowTemplate>
+                            <PagerContent>
+                                <MudTablePager PageSizeOptions="new int[] { 5, 10, 50, 100, int.MaxValue }" />
+                            </PagerContent>
+                        </MudTable>
+                    </div>
+                </MudItem>
+            }
+
+        </MudGrid>
+    </MudContainer>
+}
+else
+{
+    <AuthenticationErrorPage />
+}
+
+<style>
+    .table-data-alignment{
+        text-align: center
+    }
+</style>
+
+
+@code {
+    private bool isAddButtonEnabled = false;
+    private IEnumerable<CSIPartInventory>? iTSParts;
+    private IEnumerable<ITSImage>? iTSImages;
+    public string? SearchText { get; set; }
+    private IEnumerable<KeyValuePair<int, int>> partImageCounts = Enumerable.Empty<KeyValuePair<int, int>>();
+    private List<ITSImage> selectedImages = new List<ITSImage>();
+    IList<IBrowserFile> files = new List<IBrowserFile>();
+    private string? selectedPartNumber;
+    private string? BomDesc;
+    private bool resetValueOnEmptyText;
+    private bool coerceText;
+    private bool coerceValue;
+    private string? selectedImage;
+    private string? selectedImageName;
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            //var partsResponse = await HttpClient.GetAsync("https://localhost:7006/api/CSIPartInventory/GPar");
+            // var partsResponse = await HttpClient.GetAsync(ApiConstants.GetCSIPartInventories);
+            // if (partsResponse.IsSuccessStatusCode)
+            // {
+            //     iTSParts = await partsResponse.Content.ReadFromJsonAsync<IEnumerable<CSIPartInventory>>();
+            // }
+
+            //var response = await HttpClient.GetAsync("https://localhost:7006/api/ITSImage/gall");
+            var response = await HttpClient.GetAsync(ApiConstants.GetITSImages);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var res = await response.Content.ReadFromJsonAsync<List<ITSImage>>();
+
+                iTSImages = res.OrderByDescending(p => p.Id);
+            }
+
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error Occured {ex.Message}", Severity.Warning);
+            return;
+        }
+    }
+
+    private async Task<IEnumerable<string>> FilteredParts(string value)
+    {
+        await Task.Delay(5);
+
+        var distinctPartNumbers = iTSParts?.Select(pl => pl.PartId.ToString()).Distinct().ToList();
+
+        if (string.IsNullOrEmpty(value))
+        {
+            return distinctPartNumbers;
+        }
+
+        var res = iTSParts?.Where(x => x.PartId.ToString().Contains(value, StringComparison.InvariantCultureIgnoreCase))?.Select(x => x.PartId.ToString());
+        return res;
+    }
+
+    private async Task SearchPartsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(SearchText))
+        {
+            Snackbar.Add("Please input a part number.", Severity.Error);
+            // isAddButtonEnabled = false;
+            return;
+        }
+
+        // var response = await HttpClient.GetAsync($"https://localhost:7006/api/CSIPartInventory/GPar/{SearchText}");
+        var response = await HttpClient.GetAsync($"{ApiConstants.SearchPartNumber}/{SearchText}");
+
+        if (response.IsSuccessStatusCode)
+        {
+            iTSParts = await response.Content.ReadFromJsonAsync<IEnumerable<CSIPartInventory>>();
+
+            if (iTSParts.Count() > 0)
+            {
+                Snackbar.Add("Part Number Found.", Severity.Success);
+                // isAddButtonEnabled = true;
+                selectedPartNumber = iTSParts.FirstOrDefault().PartId.ToString();
+                BomDesc = iTSParts.FirstOrDefault().BOMDesc;
+                await Add();
+
+            }
+            else
+            {
+                Snackbar.Add("Part Number Not Found !", Severity.Warning);
+                // isAddButtonEnabled = false;
+            }
+        }
+        else
+        {
+            Snackbar.Add("Failed To Fetch", Severity.Error);
+        }
+    }
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SearchPartsAsync();
+        }
+    }
+    private async Task Add()
+    {
+        if (selectedPartNumber == null)
+        {
+            Snackbar.Add("Please select Part Number.", Severity.Warning);
+            return;
+        }
+
+        if (iTSImages != null && iTSImages.Any(image => image.PartNumber == int.Parse(selectedPartNumber)))
+        {
+            Snackbar.Add("This Part Number already exist, Please edit it.", Severity.Warning);
+        }
+        else
+        {
+            var partInfo = new PartInfoDTO
+                {
+                    PartNumber = selectedPartNumber,
+                    BomDesc = BomDesc
+             };
+
+            //var options = new DialogOptions { FullWidth = true };
+            var parameters = new DialogParameters<ImageDisplayDialog>();
+            parameters.Add("PartInfo", partInfo);
+
+            DialogService.Show<AddPartImageDialog>("", parameters, DialogSettings.DialogOptionsAddEditDelete);
+
+            CompletionService.CompletionChanged += async (sender, args) =>
+            {
+                await UpdatePartImagesDataAsync();
+            };
+
+        }
+    }
+
+    private async Task ViewImages(int partNumber)
+    {
+        var iTSimage = iTSImages.FirstOrDefault(x => x.PartNumber == partNumber);
+        if (iTSimage != null)
+        {
+            var parameters = new DialogParameters();
+            parameters.Add("Images", iTSimage);
+
+            DialogService.Show<ViewPartImageDialog>("View Images", parameters, DialogSettings.ViewPartImageDialogOptions);
+        }
+    }
+
+    private async Task EditImages(int partNumber)
+    {
+        var iTSimage = iTSImages.FirstOrDefault(x => x.PartNumber == partNumber);
+        if (iTSimage != null)
+        {
+            var parameters = new DialogParameters();
+            parameters.Add("ITSImage", iTSimage); // Pass the entire ITSImage object
+
+            //var options = new DialogOptions { FullWidth = true };
+            var dialog = DialogService.Show<EditPartImageDialog>("Edit Image", parameters, DialogSettings.DialogOptionsAddEditDelete);
+
+            CompletionService.CompletionChanged += async (sender, args) =>
+            {
+                await UpdatePartImagesDataAsync();
+            };
+        }
+    }
+
+    private async Task DeleteImages(int partNumber)
+    {
+        var parameters = new DialogParameters();
+        parameters.Add("PartNumber", partNumber);
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small };
+
+        var dialog = DialogService.Show<DeletePartImagesDialog>("Confirm Delete", parameters, DialogSettings.DialogOptionsAddEditDelete);
+
+        CompletionService.CompletionChanged += async (sender, args) =>
+        {
+            await UpdatePartImagesDataAsync();
+        };
+    }
+
+    private void ClearFields()
+    {
+        selectedPartNumber = null;
+    }
+
+    private async Task UpdatePartImagesDataAsync()
+    {
+        if (CompletionService.IsCompleted)
+        {
+            //var response = await HttpClient.GetAsync("https://localhost:7006/api/ITSImage/gall");
+            var response = await HttpClient.GetAsync(ApiConstants.GetITSImages);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var res = await response.Content.ReadFromJsonAsync<List<ITSImage>>();
+
+                iTSImages = res.OrderByDescending(p => p.Id);
+
+                StateHasChanged();
+                isAddButtonEnabled = false;
+            }
+        }
+    }
+
+    public class ImageUploadDto
+    {
+        public int PartNumber { get; set; }  
+        public string BomDesc { get; set; }
+        public List<ImageDataDto> Images { get; set; }
+    }
+    
+    public class ImageDataDto
+    {
+        public byte[] Data { get; set; }
+        public int ITSImageId { get; set; }
+    }
+   
+}

@@ -1,0 +1,194 @@
+﻿@using ITS.Client.Dialog
+@using ITS.Client.Dialog.Location
+@using ITS.Client.Dialog.LocationQty
+@using ITS.Client.Utitlity;
+@using ITS.Shared.Models
+@using MudBlazor
+@using System.Collections.Generic
+@using System.Text
+
+@inject IDialogService DialogService
+@inject IJSRuntime jsRuntime
+@inject ISnackbar Snackbar
+@inject HttpClient HttpClient
+@inject IDialogCompletionService CompletionService
+
+
+<MudContainer Fixed="true">
+    <MudGrid Class="d-flex justify-content-around">
+        <MudItem md="12" sm="12" xs="12">
+            <MudButton Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Primary" 
+                        OnClick="@AddPartLocationQty">ADD</MudButton>
+            @if (iTSPartLocationsQties != null && iTSPartLocationsQties.Count() > 0)
+            {
+                <div class="table-container">
+                    <MudTable Items="@iTSPartLocationsQties" Class="table table-bordered table-striped"
+                              Filter="new Func<ITSPartLocationQty,bool>(FilterFunc1)">
+                    <ToolBarContent>
+                            <MudText Typo="Typo.h6"></MudText>
+                            <MudSpacer />
+                        <MudTextField @bind-Value="searchString1" Placeholder="Search" Adornment="Adornment.End"
+                                          AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" @onkeydown="HandleKeyDown"></MudTextField>
+                    </ToolBarContent>
+                    <HeaderContent>
+                            <MudTh Style="text-align:center">Location</MudTh>
+                            <MudTh Style="width:200px;text-align:center">Description</MudTh>
+                            <MudTh Style="text-align:center">Part Number</MudTh>
+                            <MudTh Style="width:250px;text-align:center">Part Description</MudTh>
+                            <MudTh Style="text-align:center">Cap Quantity</MudTh>
+                            <MudTh Style="width:175px;text-align:center">Priority Location</MudTh>
+                            <MudTh Style="text-align:center">Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate Context="location">
+                            <MudTd Class="table-data-alignment">@location.Location</MudTd>
+                            <MudTd Class="table-data-alignment">@location.Description</MudTd>
+                            <MudTd Class="table-data-alignment">@location.PartNumber</MudTd>
+                            <MudTd Class="table-data-alignment">@location.Part_Description</MudTd>
+                            <MudTd Class="table-data-alignment">@location.Cap_Quantity</MudTd>
+                            @if (location.IsPrimaryLocation)
+                            {
+                                <MudTh Class="table-data-alignment">Primary Location</MudTh>
+                            }
+                            else
+                            {
+                                <MudTh Class="table-data-alignment">Secondary Location</MudTh>
+                            }
+                            <MudTd Class="table-data-alignment">
+                                <MudButton StartIcon="@Icons.Material.Filled.Edit" Color="Color.Primary" 
+                                            OnClick="@(() => EditPartLocationQty(location))" />
+                                <MudButton StartIcon="@Icons.Material.Filled.Delete" Color="Color.Error" 
+                                            OnClick="@(() => DeletePartLocationQty(location))" />
+                            </MudTd>
+                    </RowTemplate>
+                    <PagerContent>
+                        <MudTablePager PageSizeOptions="new int[] { 3, 5, 10, 50, 100, int.MaxValue }" />
+                    </PagerContent>
+                </MudTable>
+                </div>
+            }
+            @* else
+            {
+                <h3 class="mt-2 ml-2"> No Data Found !</h3>
+            } *@
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+<style>
+    .table-data-alignment {
+        text-align: center
+    }
+    .table-container {
+        /* max-height: 500px;
+        overflow-y: auto; */
+        margin-top:2rem;
+    }
+</style>
+
+
+@code {
+    private IEnumerable<ITSPartLocationQty> iTSPartLocationsQties = new List<ITSPartLocationQty>();
+
+    private int currentPage = 1;
+    private string searchString1 = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPartLocationQty();
+    }
+
+    private async Task LoadPartLocationQty()
+    {
+        try
+        {
+            //var locationsResponse = await HttpClient.GetAsync("https://localhost:7006/api/ITSPartLocationQty/gplq");
+            var locationsResponse = await HttpClient.GetAsync(ApiConstants.GetPartLocationQty);
+            if (locationsResponse.IsSuccessStatusCode)
+            {
+                var locationResult = await locationsResponse.Content.ReadFromJsonAsync<IEnumerable<ITSPartLocationQty>>();
+                if (locationResult != null)
+                {
+                    iTSPartLocationsQties = locationResult.ToList().OrderByDescending( pq => pq.Id);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error Occured {ex.Message}", Severity.Warning);
+        }
+    }
+
+    private bool FilterFunc1(ITSPartLocationQty element) => FilterFunc(element, searchString1);
+
+    private bool FilterFunc(ITSPartLocationQty element, string searchString)
+    {
+        if (string.IsNullOrWhiteSpace(searchString))
+            return true;
+        if (element.PartNumber.ToString().Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        return false;
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await LoadPartLocationQty(); 
+        }
+    }
+
+    async Task EditPartLocationQty(ITSPartLocationQty location)
+    {
+        var options = new DialogOptions { FullWidth = true };
+        var parameters = new DialogParameters<EditPartLocQtyDialog> { { x => x.iTSPartLocQty, location } };
+
+        var dialog = await DialogService.ShowAsync<EditPartLocQtyDialog>("Edit Location", parameters, DialogSettings.DialogOptionsAddEditDelete);
+
+        CompletionService.CompletionChanged += async (sender, args) =>
+        {
+            await UpdatePartLocQtyDataAsync();
+        };
+    }
+
+    async Task DeletePartLocationQty(ITSPartLocationQty location)
+    {
+        var options = new DialogOptions { FullWidth = true };
+        var parameters = new DialogParameters<DeletePartLocQtyDialog> { { x => x.iTSPartLocQty, location } };
+
+        var dialog = await DialogService.ShowAsync<DeletePartLocQtyDialog>("Delete Server", parameters, DialogSettings.DialogOptionsAddEditDelete);
+
+        CompletionService.CompletionChanged += async (sender, args) =>
+        {
+            await UpdatePartLocQtyDataAsync();
+        };
+    }
+
+    async Task AddPartLocationQty()
+    {
+        var options = new DialogOptions { FullWidth = true };
+        DialogService.Show<AddPartLocQtyDialog>("Add Locations", DialogSettings.DialogOptionsAddEditDelete);
+
+        CompletionService.CompletionChanged += async (sender, args) =>
+        {
+            await UpdatePartLocQtyDataAsync();
+        };
+    }
+
+    private async Task UpdatePartLocQtyDataAsync()
+    {
+        if (CompletionService.IsCompleted)
+        {
+            //var locationsResponse = await HttpClient.GetAsync("https://localhost:7006/api/ITSPartLocationQty/gplq");
+            var locationsResponse = await HttpClient.GetAsync(ApiConstants.GetPartLocationQty);
+            if (locationsResponse.IsSuccessStatusCode)
+            {
+                var locationResult = await locationsResponse.Content.ReadFromJsonAsync<IEnumerable<ITSPartLocationQty>>();
+                if (locationResult != null)
+                {
+                    iTSPartLocationsQties = locationResult.ToList().OrderByDescending(pq => pq.Id);
+                    StateHasChanged();
+                }
+            }
+        }
+    }
+}

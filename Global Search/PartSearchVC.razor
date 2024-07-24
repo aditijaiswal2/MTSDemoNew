@@ -1,0 +1,438 @@
+﻿@page "/psvc"
+
+@using ITS.Client.Dialog.Images;
+@using System.Text;
+@using ITS.Client.Dialog.QRCode;
+@using ITS.Shared.DTOs;
+@using ITS.Client.Utitlity
+
+@inject ISnackbar Snackbar
+
+
+<MudContainer Style="height: calc(100vh);">
+    <MudGrid Class="d-flex Justify-around">
+        <MudItem md="11" sm="12" xs="12" class="mb-2">
+            <MudItem lg="12" md="12">
+                <MudTextField T="string" MaxLength="250" Immediate="true"
+                              Label="Input Part Number" @bind-Value="Search"
+                              Variant="Variant.Outlined" @onkeydown="HandleKeyDown">
+                </MudTextField>
+            </MudItem>
+        </MudItem>
+
+        <MudItem Class="pa-2 d-flex justify-end" md="1" sm="12" xs="12">
+            <div style="padding: 19px 1px; margin-right: -16px ">
+                <MudButton StartIcon="@Icons.Material.Outlined.Search" Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="@(async () => await SearchPartsAsync(Search))">Search</MudButton>
+            </div>
+        </MudItem>
+
+        @if (!string.IsNullOrWhiteSpace(Search))
+        {
+            @if (matchingParts != null && matchingParts.Any() && searchedParts.PartNumber.ToString() == Search)
+            {
+                <MudItem md="12" sm="12" xs="12" class="d-flex justify-center">
+                    <MudButton StartIcon="@Icons.Material.Filled.QrCode" Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => GenerateQR())">Print QR</MudButton>
+                </MudItem>
+
+                @if (selectedLocation.IsPrimaryLoc == false)
+                {
+                    <MudItem md="12" sm="12" xs="12">
+                        <div style="color: orangered; font-weight: bold;text-align: center;font-size:16px">Secondary Location</div>
+                    </MudItem>
+                }
+                else
+                {
+                    <MudItem md="12" sm="12" xs="12">
+                        <div style="color: orangered; font-weight: bold;text-align: center;font-size:16px">Primary Location</div>
+                    </MudItem>
+                }
+                <MudItem md="6" sm="12" xs="12">
+                    <MudTextField MaxLength="250" Immediate="true" Validation="@(new Func<string, IEnumerable<string>>(MaxCharacters))"
+                                  Variant="Variant.Outlined" ReadOnly Label="PartNumber" Value="@searchedParts.PartNumber"></MudTextField>
+                 </MudItem>
+
+                <MudItem md="6" sm="12" xs="12">
+                    <MudTextField MaxLength="250" Immediate="true" Validation="@(new Func<string, IEnumerable<string>>(MaxCharacters))"
+                                  Variant="Variant.Outlined" ReadOnly Label="PartDescription" Value="@searchedParts.PartDescription"></MudTextField>
+                 </MudItem>
+
+                <MudItem md="4" sm="12" xs="12">
+                    @if (LocationAndQtys.Count == 1)
+                    {
+                        var singleLocation = LocationAndQtys.First();
+                        selectedLocation = singleLocation;
+                        <MudTextField MaxLength="250" Immediate="true" Validation="@(new Func<string, IEnumerable<string>>(MaxCharacters))"
+                                      Label="Location" Value="selectedLocation.Location" Variant="Variant.Outlined" class="mb-2 mr-2" ReadOnly />
+                        <div style="color:mediumslateblue;font-weight:bold;margin-top:4px">* Only One</div>
+                    }
+                    else
+                    {
+                        <MudSelect T="LocationAndQty" Variant="Variant.Outlined" @bind-Value="selectedLocation" AnchorOrigin="Origin.BottomCenter"
+                                   Label="Location" OpenIcon="@Icons.Material.Filled.LocationCity" AdornmentColor="Color.Primary">
+                            @foreach (var item in LocationAndQtys)
+                            {
+                                <MudSelectItem Value="@item">@item.Location</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <div style="color:green;font-weight:bold;margin-top:4px">* Multiple Locations</div>
+                    }
+                </MudItem>
+                <MudItem md="4" sm="12" xs="12">
+                    <MudTextField MaxLength="250" Immediate="true" Validation="@(new Func<string, IEnumerable<string>>(MaxCharacters))"
+                                  Variant="Variant.Outlined" ReadOnly Label="Unit/Measure" Value="@matchingParts.FirstOrDefault().ITSUtilsLocsQtys.FirstOrDefault().Unit_Measure"></MudTextField>
+                </MudItem>
+                @if (selectedLocation != null)
+                {
+                    var remainingQuantity = selectedLocation.Capquantity - selectedLocation.QuantityToAdd;
+                    <MudItem md="4" sm="12" xs="12">
+                        <MudTextField MaxLength="250" Immediate="true" Validation="@(new Func<string, IEnumerable<string>>(MaxCharacters))"
+                                      Variant="Variant.Outlined" ReadOnly Label="Quantity on hand/ Cap Quantity" Value="@($"{selectedLocation.QuantityToAdd}/{selectedLocation.Capquantity}")"></MudTextField>
+                         <div style="color:green;font-weight:bold;margin-top:4px">Remaining Quantities: @remainingQuantity</div>
+                     </MudItem>
+
+                }
+                @if (iTSImages != null && iTSImages.Images != null)
+                {
+                    <MudItem md="12" sm="12" xs="12">
+                        <MudContainer>
+                            <MudGrid Class="d-flex mt-4 mb-4" Spacing="2" Justify="Justify.Center">
+                                @foreach (var image in iTSImages.Images)
+                                {
+                                    <MudCard Class="pa-2" Outlined="true" Style="width: 100px;">
+                                        <MudCardMedia @onclick="OpenDialog" Image="@($"data:image/jpeg;base64,{Convert.ToBase64String(image.Data)}")" Height="80" />
+                                    </MudCard>
+                                }
+                            </MudGrid>
+                        </MudContainer>
+                    </MudItem>
+                }
+            }
+
+            else if (SecondSearchiTSParts != null && SecondSearchiTSParts.Any() && secondsearchPartNumber == Search)
+            {
+
+                <MudItem md="6" sm="12" xs="12">
+                    <MudTextField MaxLength="250" Immediate="true" Validation="@(new Func<string, IEnumerable<string>>(MaxCharacters))"
+                                  Variant="Variant.Outlined" ReadOnly Label="PartNumber" Value="@secondsearchPartNumber"></MudTextField>
+                 </MudItem>
+
+                <MudItem md="6" sm="12" xs="12">
+                    <MudTextField MaxLength="250" Immediate="true" Validation="@(new Func<string, IEnumerable<string>>(MaxCharacters))"
+                                  Variant="Variant.Outlined" ReadOnly Label="PartDescription" Value="@secondsearchPartDesc"></MudTextField>
+                 </MudItem>
+
+                <MudItem md="6" sm="12" xs="12">
+                    <MudTextField MaxLength="250" Immediate="true" Validation="@(new Func<string, IEnumerable<string>>(MaxCharacters))"
+                                  Variant="Variant.Outlined" ReadOnly Label="Location" Value="@secondsearchPre_Assigned_Loc"></MudTextField>
+                 </MudItem>
+
+                <MudItem md="6" sm="12" xs="12">
+                    <MudTextField MaxLength="250" Immediate="true" Validation="@(new Func<string, IEnumerable<string>>(MaxCharacters))"
+                                  Variant="Variant.Outlined" ReadOnly Label="Location Description" Value="@secondsearchPre_Assigned_Loc_Des"></MudTextField>
+                 </MudItem>
+
+                <MudItem md="6" sm="12" xs="12">
+                    <MudTextField MaxLength="250" Immediate="true" Validation="@(new Func<string, IEnumerable<string>>(MaxCharacters))"
+                                  Variant="Variant.Outlined" ReadOnly Label="Quantity On Hand" Value="@secondsearchQty_on_hand"></MudTextField>
+                 </MudItem>
+
+                <MudItem md="6" sm="12" xs="12">
+                    <MudTextField MaxLength="250" Immediate="true" Validation="@(new Func<string, IEnumerable<string>>(MaxCharacters))"
+                                  Variant="Variant.Outlined" ReadOnly Label="Unit/Measure" Value="@secondsearchUnit_Measure"></MudTextField>
+                 </MudItem>
+
+                <MudItem md="12" sm="12" xs="12">
+                    <div style="text-align: center; color: red; font-weight: bold;">Cap Quantity Not Assigned</div>
+                </MudItem>
+            }
+
+        }
+
+    </MudGrid>
+</MudContainer>
+
+@code {
+    private List<LocationAndQty> LocationAndQtys = new List<LocationAndQty>();
+    private LocationAndQty? selectedLocation { get; set; } = new LocationAndQty();
+    private List<ITSImage> partImages = new List<ITSImage>();
+    private IEnumerable<ITSPartInventory>? iTSPartsToSearch;
+    public List<string>? labelForLocation { get; set; }
+    private IEnumerable<ITSPartLocationQty> iTSParts;
+    private ITSPartInventory? searchedParts;
+    public ITSImage? iTSImages;
+    private IEnumerable<CSIPartInventory>? SecondSearchiTSParts;
+    public string? Search { get; set; }
+    private string? primaryLocationName;
+
+    private bool resetValueOnEmptyText;
+    private bool coerceText;
+    private bool coerceValue;
+
+    private IEnumerable<ITSPartInventory>? matchingParts;
+    private string? secondsearchPartNumber;
+    private string? secondsearchLocationDesc;
+    private string? secondsearchPartDesc;
+    private decimal secondsearchQty_on_hand;
+    private string secondsearchUnit_Measure;
+    private string secondsearchPre_Assigned_Loc;
+    private string secondsearchPre_Assigned_Loc_Des;
+
+    private IEnumerable<string> MaxCharacters(string ch)
+    {
+        if (!string.IsNullOrEmpty(ch) && 250 <= ch?.Length)
+            yield return "Max 250 characters";
+    }
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var partsResponse = await Http.GetAsync("https://localhost:7006/api/ITSPartInventory/gall");
+            //var partsResponse = await Http.GetAsync(ApiConstants.GetItsPartInventoriesForSearch);
+            if (partsResponse.IsSuccessStatusCode)
+            {
+                var res = await partsResponse.Content.ReadFromJsonAsync<IEnumerable<ITSPartInventory>>();
+                iTSPartsToSearch = res.ToList();
+            }
+
+            var partsLocResponse = await Http.GetAsync("https://localhost:7006/api/ITSPartLocationQty/gplq");
+           // var partsLocResponse = await Http.GetAsync(ApiConstants.GetPartLocationQtyForSearch);
+            if (partsLocResponse.IsSuccessStatusCode)
+            {
+                var partsResult = await partsLocResponse.Content.ReadFromJsonAsync<IEnumerable<ITSPartLocationQty>>();
+                iTSParts = partsResult.ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            return;
+        }
+    }
+
+    private async Task<IEnumerable<string>> FilteredParts(string value)
+    {
+        await Task.Delay(5);
+
+        var distinctPartNumbers = iTSPartsToSearch?.Select(pl => pl.PartNumber.ToString()).Distinct().ToList();
+
+        if (string.IsNullOrEmpty(value))
+        {
+            return distinctPartNumbers;
+        }
+
+        return distinctPartNumbers.Where(partNumber => partNumber.Contains(value, StringComparison.InvariantCultureIgnoreCase));
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SearchPartsAsync(Search);
+        }
+    }
+
+
+    private async Task SearchPartsAsync(string searchTerm)
+    {
+        clearAll();
+        StateHasChanged();
+
+        if (searchTerm != null)
+        {
+            var lcList = iTSParts?.Where(p => p.PartNumber.ToString() == searchTerm).ToList();
+            primaryLocationName = lcList.FirstOrDefault(loc => loc.IsPrimaryLocation)?.Location;
+        }
+        else
+        {
+            Snackbar.Add("Please Input Part Number.", Severity.Warning);
+            return;
+        }
+
+        matchingParts = iTSPartsToSearch.Where(p => p.PartNumber.ToString() == searchTerm).ToList();
+
+        if (matchingParts == null || !matchingParts.Any())
+        {
+            var response = await Http.GetAsync($"https://localhost:7006/api/CSIPartInventory/GPar/{searchTerm}");
+            //var response = await Http.GetAsync($"{ApiConstants.SearchPartNumber}/{searchTerm}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var SecondSearchResult = await response.Content.ReadFromJsonAsync<IEnumerable<CSIPartInventory>>();
+                SecondSearchiTSParts = SecondSearchResult.ToList();
+
+                if (SecondSearchiTSParts.Count() > 0)
+                {
+                    secondsearchPartNumber = SecondSearchiTSParts.FirstOrDefault().PartId.ToString();
+                    secondsearchPartDesc = SecondSearchiTSParts.FirstOrDefault().BOMDesc;
+                    secondsearchQty_on_hand = SecondSearchiTSParts.FirstOrDefault().Qty_on_hand;
+                    secondsearchUnit_Measure = SecondSearchiTSParts.FirstOrDefault().Unit_Measure;
+                    secondsearchPre_Assigned_Loc = SecondSearchiTSParts.FirstOrDefault().Pre_Assigned_Loc;
+                    secondsearchPre_Assigned_Loc_Des = SecondSearchiTSParts.FirstOrDefault().Pre_Assigned_Loc_Des;
+                }
+                else
+                {
+                    Snackbar.Add("Part Number Not Found !", Severity.Warning);
+
+                }
+            }
+            else
+            {
+                Snackbar.Add("Failed To Fetch", Severity.Error);
+            }
+        }
+
+        if (matchingParts.Any())
+        {
+            searchedParts = matchingParts.First();
+
+            if (searchedParts != null)
+            {
+                //var imageResponse = await Http.GetAsync($"https://localhost:7006/api/ITSImage/{searchedParts.PartNumber}");
+                var imageResponse = await Http.GetAsync($"{ApiConstants.SearchPartImage}/{searchedParts.PartNumber}");
+                if (imageResponse.IsSuccessStatusCode)
+                {
+                    var imageDataJson = await imageResponse.Content.ReadAsStringAsync();
+                    iTSImages = JsonConvert.DeserializeObject<ITSImage>(imageDataJson);
+                }
+            }
+
+            if (searchedParts != null && searchedParts.ITSUtilsLocsQtys != null)
+            {
+                LocationAndQtys = new List<LocationAndQty>();
+
+                foreach (var ITSUtilsLocsQtysImg in searchedParts.ITSUtilsLocsQtys)
+                {
+                    //var locationResponse = await Http.GetAsync($"https://localhost:7006/api/ITSPartLocationQty/{ITSUtilsLocsQtysImg.LocationId}");
+                    var locationResponse = await Http.GetAsync($"{ApiConstants.SearchPartLocationQty}/{ITSUtilsLocsQtysImg.LocationId}");
+                    if (locationResponse.IsSuccessStatusCode)
+                    {
+                        var locationData = await locationResponse.Content.ReadAsStringAsync();
+                        var retrievedLocation = JsonConvert.DeserializeObject<ITSPartLocationQty>(locationData);
+
+                        decimal totalQuantityForLocation = matchingParts.Sum(p => p.ITSUtilsLocsQtys
+                            .Where(q => q.LocationId == retrievedLocation.Id)
+                            .Sum(q => q.Qty_on_hand));
+
+                        var existingLocation = LocationAndQtys.FirstOrDefault(loc => loc.LocationId == retrievedLocation.Id);
+                        if (existingLocation != null)
+                        {
+                            // Update existing location's quantity
+                            //existingLocation.Quantity += totalQuantityForLocation;
+                        }
+                        else
+                        {
+                            LocationAndQtys.Add(new LocationAndQty
+                                {
+                                    LocationId = retrievedLocation.Id,
+                                    Location = retrievedLocation.Location,
+                                    QuantityToAdd = retrievedLocation.Qty_on_hand,
+                                    Capquantity = retrievedLocation.Cap_Quantity,
+                                    IsPrimaryLoc = retrievedLocation.IsPrimaryLocation
+                                    // Images = ITSUtilsLocsQtysImg.Images
+                                });
+                        }
+                    }
+                }
+
+                LocationAndQtys = LocationAndQtys
+                                  .GroupBy(l => l.LocationId)
+                                  .Select(group => group.First())
+                                  .ToList();
+
+                selectedLocation = LocationAndQtys.FirstOrDefault();
+            }
+        }
+    }
+
+    private void OpenDialog()
+    {
+        var parameters = new DialogParameters<ImageDisplayDialog>();
+        parameters.Add("Images", iTSImages.Images);
+
+        DialogService.Show<ImageDisplayDialog>("Images", parameters, DialogSettings.DialogOptionsImage);
+    }
+
+    public async Task GenerateQR()
+    {
+        try
+        {
+            var remainingQty = selectedLocation.Capquantity - selectedLocation.QuantityToAdd;
+
+            SearchDTO searchDto = new SearchDTO()
+                {
+                    PartNumber = searchedParts.PartNumber,
+                    PartDescriptipn = searchedParts.PartDescription,
+                    Location = selectedLocation.Location,
+                    Cap_Quantity = selectedLocation.Capquantity,
+                    Remaining_Quantities = remainingQty,
+                    Qty_on_hand = selectedLocation.QuantityToAdd,
+                    Unit_Measure = matchingParts.FirstOrDefault().ITSUtilsLocsQtys.FirstOrDefault().Unit_Measure,
+                    DownloadDateTime = DateTime.Now
+                };
+
+            var jsonPart = JsonConvert.SerializeObject(searchDto);
+            var content = new StringContent(jsonPart, Encoding.UTF8, "application/json");
+            //var response = await Http.PostAsync("https://localhost:7006/api/QRCode/partQR", content);
+            var response = await Http.PostAsync(ApiConstants.GeneratePartQR, content);
+
+            byte[] qrCodeBytes = null;
+
+            if (response.IsSuccessStatusCode)
+            {
+                using (var pdfStream = await response.Content.ReadAsStreamAsync())
+                {
+                    using (var memoryStream = new MemoryStream())
+                    {
+                        await pdfStream.CopyToAsync(memoryStream);
+                        qrCodeBytes = memoryStream.ToArray();
+                    }
+                }
+
+                QrDTO locationQr = new QrDTO()
+                    {
+                        PartOrLoc = searchDto.PartNumber.ToString(),
+                        Description = searchDto.PartDescriptipn,
+                        QRData = qrCodeBytes,
+                    };
+
+                var options = new DialogOptions { FullWidth = true };
+                var parameters = new DialogParameters { ["PrintQR"] = locationQr };
+
+                var dialog = await DialogService.ShowAsync<PartQRPrintDialog>("", parameters);
+
+            }
+            else
+            {
+                Snackbar.Add($"QR code generation failed with status code: {response.StatusCode}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error generating QR code: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void clearAll()
+    {
+        LocationAndQtys = new();
+        searchedParts = null;
+        iTSImages = null;
+        StateHasChanged();
+    }
+
+    class LocationAndQty
+    {
+        public int LocationId { get; set; }
+        public decimal QuantityToAdd { get; set; }
+        public decimal Capquantity { get; set; }
+        public string? Location { get; set; }
+        public List<ITSImage>? Images { get; set; }
+        public bool IsPrimaryLoc { get; set; }
+
+        public override string ToString()
+        {
+            return Location ?? string.Empty;
+        }
+    }
+}

@@ -1,0 +1,128 @@
+﻿
+@using ITS.Client.Dialog.Cart
+@using ITS.Client.Dialog.QRCode;
+@using ITS.Client.Utitlity
+@using ITS.Shared.DTOs
+@using ITS.Shared.Models
+@using MudBlazor
+@using System.Collections.Generic
+@using System.Net.Http.Json
+@using System.Threading.Tasks
+
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject HttpClient HttpClient
+@inject IDialogCompletionService CompletionService
+
+<MudContainer Fixed="true">
+    <MudGrid Class="d-flex">
+        <MudItem md="12" sm="12" xs="12">
+            <MudButton Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Primary" OnClick="@AddCart">ADD</MudButton>
+        </MudItem>
+        <MudItem md="12" sm="12" xs="12">
+            <div style="max-height: 500px; max-width:100%;">
+                <MudTable Items="@cartID" Class="table table-bordered table-striped mt-2">
+                    <HeaderContent>
+                        <MudTh>Cart ID</MudTh>
+                        <MudTh Style="text-align:center">Description</MudTh>
+                        <MudTh Style="text-align:center">Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate Context="cartid">
+                        <MudTd>@cartid.Cartid</MudTd>
+                        <MudTd Style="text-align:center">@cartid.Description</MudTd>
+                        <MudTd Style="text-align:center">
+                            <!-- Example action buttons -->
+                            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Edit" Color="Color.Primary" OnClick="@(() => EditCart(cartid))">Edit</MudButton>
+                            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => DeleteCart(cartid))">Delete</MudButton>
+                        </MudTd>
+                    </RowTemplate>
+                    <PagerContent>
+                        <MudTablePager PageSizeOptions="new int[] { 5, 10, 50, 100, int.MaxValue }" />
+                    </PagerContent>
+                </MudTable>
+            </div>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+@code {
+    private IEnumerable<CartID> cartID = new List<CartID>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCart();
+    }
+
+    private async Task LoadCart()
+    {
+        Snackbar.Clear();
+        Snackbar.Configuration.PositionClass = Defaults.Classes.Position.TopCenter;
+
+        try
+        {
+            var response = await HttpClient.GetAsync("https://localhost:7006/api/CartID/getcartid");
+            if (response.IsSuccessStatusCode)
+            {
+                cartID = await response.Content.ReadFromJsonAsync<IEnumerable<CartID>>();
+            }
+            else
+            {
+                Snackbar.Add($"Failed to load cart data. Status code: {response.StatusCode}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error Occurred: {ex.Message}", Severity.Warning);
+        }
+    }
+
+    async Task AddCart()
+    {
+        var dialog = DialogService.Show<CartAddition>("ADD Cart", DialogSettings.DialogOptionsAddEditDelete);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            await LoadCart(); // Reload cart data after adding
+        }
+    }
+
+    private async Task EditCart(CartID cart)
+    {
+        var parameters = new DialogParameters<EditCartDialog> { { x => x.cartid, cart } };
+        var dialog = await DialogService.ShowAsync<EditCartDialog>("EDIT CART", parameters, DialogSettings.DialogOptionsAddEditDelete);
+
+        CompletionService.CompletionChanged += async (sender, args) =>
+        {
+            await UpdateCartDataAsync();
+        };
+    }
+
+    private async Task DeleteCart(CartID cart)
+    {
+        var parameters = new DialogParameters<DeleteCartDialog> { { x => x.cartid, cart} };
+        var dialog = await DialogService.ShowAsync<DeleteCartDialog>("DELETE CART", parameters, DialogSettings.DialogOptionsAddEditDelete);
+
+        CompletionService.CompletionChanged += async (sender, args) =>
+        {
+            await UpdateCartDataAsync();
+        };
+    }
+    private async Task UpdateCartDataAsync()
+    {
+        if (CompletionService.IsCompleted)
+        {
+            var cartResponse = await HttpClient.GetAsync("https://localhost:7006/api/CartID/getcartid");
+           // var locationsResponse = await HttpClient.GetAsync(ApiConstants.GetLocations);
+            if (cartResponse.IsSuccessStatusCode)
+            {
+                var cartIDResult = await cartResponse.Content.ReadFromJsonAsync<IEnumerable<CartID>>();
+                if (cartIDResult != null)
+                {
+                    cartID = cartIDResult.ToList().OrderByDescending(c => c.Id);
+                    StateHasChanged();
+                }
+            }
+        }
+    }
+}
